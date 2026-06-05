@@ -12,9 +12,9 @@ struct ChatView: View {
 
             VStack(spacing: 0) {
                 ChatHeader(dialog: dialog)
-                    .padding(.horizontal, 14)
+                    .padding(.horizontal, 12)
                     .padding(.top, 4)
-                    .padding(.bottom, 10)
+                    .padding(.bottom, 8)
 
                 ScrollViewReader { proxy in
                     ScrollView {
@@ -50,8 +50,8 @@ struct ChatView: View {
                 ChatComposer(draft: $draft, isFocused: $isComposerFocused) {
                     sendDraft()
                 }
-                .padding(.horizontal, 10)
-                .padding(.bottom, 6)
+                .padding(.horizontal, 8)
+                .padding(.bottom, 5)
             }
         }
         .toolbar(.hidden, for: .navigationBar)
@@ -105,24 +105,23 @@ struct ChatHeader: View {
     let dialog: DialogItem
 
     var body: some View {
-        HStack(alignment: .center, spacing: 12) {
+        HStack(alignment: .center, spacing: 10) {
             Button {
                 dismiss()
             } label: {
-                HStack(spacing: 5) {
+                HStack(spacing: 4) {
                     Image(systemName: "chevron.left")
-                        .font(.system(size: 24, weight: .semibold))
+                        .font(.system(size: 20, weight: .medium))
                     Text("4")
-                        .font(.system(size: 18, weight: .bold))
-                        .frame(width: 28, height: 28)
+                        .font(.system(size: 15, weight: .bold))
+                        .frame(width: 23, height: 23)
                         .background(.white, in: Circle())
                         .foregroundStyle(.black)
                 }
-                .padding(.leading, 12)
-                .padding(.trailing, 14)
-                .frame(height: 58)
-                .background(Color.qnolaChrome, in: Capsule())
-                .overlay(Capsule().stroke(Color.white.opacity(0.08), lineWidth: 1))
+                .padding(.leading, 10)
+                .padding(.trailing, 12)
+                .frame(height: 46)
+                .modifier(LiquidGlassCapsule())
             }
             .buttonStyle(.plain)
 
@@ -130,25 +129,24 @@ struct ChatHeader: View {
 
             VStack(spacing: 2) {
                 Text(title)
-                    .font(.system(size: 20, weight: .bold))
+                    .font(.system(size: 18, weight: .bold))
                     .foregroundStyle(.white)
                     .lineLimit(1)
                 Text(dialog.id == 1 ? "saved messages" : "был(а) вчера в 21:01")
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(.white.opacity(0.46))
                     .lineLimit(1)
             }
-            .padding(.horizontal, 28)
-            .frame(height: 58)
-            .background(Color.qnolaChrome, in: Capsule())
-            .overlay(Capsule().stroke(Color.white.opacity(0.08), lineWidth: 1))
+            .padding(.horizontal, 24)
+            .frame(height: 46)
+            .modifier(LiquidGlassCapsule())
 
             Spacer(minLength: 0)
 
             AvatarView(title: title, id: dialog.id)
-                .frame(width: 58, height: 58)
+                .frame(width: 46, height: 46)
                 .clipShape(Circle())
-                .overlay(Circle().stroke(Color.telegramBlue.opacity(0.75), lineWidth: 2))
+                .overlay(Circle().stroke(Color.white.opacity(0.14), lineWidth: 1))
         }
     }
 
@@ -186,15 +184,15 @@ struct MessageBubble: View {
 
                     if message.outgoing {
                         Image(systemName: "checkmark")
-                            .font(.system(size: 10, weight: .bold))
+                            .font(.system(size: 10, weight: .medium))
                             .foregroundStyle(Color.telegramBlue)
                     }
                 }
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 7)
-            .frame(maxWidth: 286, alignment: message.outgoing ? .trailing : .leading)
             .modifier(MessageBubbleSurface(outgoing: message.outgoing, glass: store.liquidGlassMessages))
+            .frame(maxWidth: 286, alignment: message.outgoing ? .trailing : .leading)
 
             if !message.outgoing {
                 Spacer(minLength: 52)
@@ -213,13 +211,8 @@ struct MessageBubbleSurface: ViewModifier {
         if glass {
             #if compiler(>=6.2)
             if #available(iOS 26.0, *) {
-                if outgoing {
-                    content
-                        .glassEffect(.regular.tint(Color.white.opacity(0.24)).interactive(), in: .rect(cornerRadius: 18))
-                } else {
-                    content
-                        .glassEffect(.regular.tint(Color.black.opacity(0.08)), in: .rect(cornerRadius: 18))
-                }
+                content
+                    .glassEffect(.regular.tint((outgoing ? Color.telegramBlue : Color.white).opacity(0.16)).interactive(), in: shape)
             } else {
                 fallback(content: content, shape: shape)
             }
@@ -276,51 +269,78 @@ struct ChatComposer: View {
         HStack(alignment: .bottom, spacing: 8) {
             Button {} label: {
                 Image(systemName: "paperclip")
-                    .font(.system(size: 28, weight: .semibold))
-                    .frame(width: 58, height: 58)
-                    .background(Color.qnolaChrome, in: Circle())
+                    .font(.system(size: 22, weight: .regular))
+                    .frame(width: 46, height: 46)
+                    .modifier(LiquidGlassCircle())
             }
             .foregroundStyle(.white.opacity(0.86))
             .disabled(true)
 
-            HStack(alignment: .bottom, spacing: 10) {
-                TextField("Сообщение", text: $draft, axis: .vertical)
-                    .font(.system(size: 18, weight: .semibold))
-                    .lineLimit(1...4)
-                    .padding(.leading, 18)
-                    .padding(.vertical, 17)
-                    .foregroundStyle(.white)
-                    .focused(isFocused)
-
-                Button {} label: {
-                    Image(systemName: "gift")
-                        .font(.system(size: 25, weight: .semibold))
-                }
-                .disabled(true)
-
-                Button {} label: {
-                    Image(systemName: "moon")
-                        .font(.system(size: 25, weight: .semibold))
-                }
-                .disabled(true)
-            }
-            .foregroundStyle(.white.opacity(0.58))
-            .frame(minHeight: 58)
-            .padding(.trailing, 16)
-            .background(Color.qnolaChrome, in: Capsule())
-            .overlay(Capsule().stroke(Color.white.opacity(0.08), lineWidth: 1))
+            TextField("Сообщение", text: $draft, axis: .vertical)
+                .font(.system(size: 16, weight: .semibold))
+                .lineLimit(1...4)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 13)
+                .foregroundStyle(.white)
+                .frame(minHeight: 46)
+                .modifier(LiquidGlassCapsule())
+                .focused(isFocused)
 
             Button(action: onSend) {
                 Image(systemName: draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "mic.fill" : "paperplane.fill")
-                    .font(.system(size: 29, weight: .semibold))
-                    .frame(width: 58, height: 58)
-                    .background(Color.qnolaChrome, in: Circle())
+                    .font(.system(size: 23, weight: .regular))
+                    .frame(width: 46, height: 46)
+                    .modifier(LiquidGlassCircle())
                     .foregroundStyle(.white)
             }
             .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             .opacity(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0.9 : 1)
         }
         .padding(.top, 8)
+    }
+}
+
+struct LiquidGlassCapsule: ViewModifier {
+    func body(content: Content) -> some View {
+        #if compiler(>=6.2)
+        if #available(iOS 26.0, *) {
+            content
+                .glassEffect(.regular.tint(Color.white.opacity(0.10)).interactive(), in: Capsule())
+        } else {
+            fallback(content)
+        }
+        #else
+        fallback(content)
+        #endif
+    }
+
+    private func fallback(_ content: Content) -> some View {
+        content
+            .background(.ultraThinMaterial, in: Capsule())
+            .overlay(Capsule().stroke(Color.white.opacity(0.13), lineWidth: 1))
+            .shadow(color: .black.opacity(0.28), radius: 14, y: 6)
+    }
+}
+
+struct LiquidGlassCircle: ViewModifier {
+    func body(content: Content) -> some View {
+        #if compiler(>=6.2)
+        if #available(iOS 26.0, *) {
+            content
+                .glassEffect(.regular.tint(Color.white.opacity(0.10)).interactive(), in: Circle())
+        } else {
+            fallback(content)
+        }
+        #else
+        fallback(content)
+        #endif
+    }
+
+    private func fallback(_ content: Content) -> some View {
+        content
+            .background(.ultraThinMaterial, in: Circle())
+            .overlay(Circle().stroke(Color.white.opacity(0.13), lineWidth: 1))
+            .shadow(color: .black.opacity(0.28), radius: 14, y: 6)
     }
 }
 
