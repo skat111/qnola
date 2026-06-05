@@ -21,6 +21,17 @@ final class SessionStore: ObservableObject {
             }
         }
     }
+    @Published var telegramSyncMode = UserDefaults.standard.object(forKey: "telegramSyncMode") as? Bool ?? true {
+        didSet {
+            UserDefaults.standard.set(telegramSyncMode, forKey: "telegramSyncMode")
+            if !demoMode {
+                authState = AuthState(authorized: false, phone: nil, userDisplayName: nil)
+                dialogs = []
+                selectedDialog = nil
+                messages = []
+            }
+        }
+    }
     @Published var profileName: String {
         didSet {
             UserDefaults.standard.set(profileName, forKey: "profileName")
@@ -72,7 +83,15 @@ final class SessionStore: ObservableObject {
             return
         }
         await run {
-            authState = try await client.authState()
+            if telegramSyncMode {
+                let state = try await client.telegramState()
+                authState = AuthState(authorized: state.authorized, phone: state.phone, userDisplayName: state.userDisplayName)
+                if !state.enabled {
+                    lastError = "Telegram bridge is not configured on the backend."
+                }
+            } else {
+                authState = try await client.authState()
+            }
         }
     }
 
@@ -82,7 +101,11 @@ final class SessionStore: ObservableObject {
             return
         }
         await run {
-            try await client.sendLoginCode(phone: phone)
+            if telegramSyncMode {
+                try await client.telegramSendLoginCode(phone: phone)
+            } else {
+                try await client.sendLoginCode(phone: phone)
+            }
             authState = AuthState(authorized: false, phone: phone, userDisplayName: nil)
         }
     }
@@ -93,7 +116,12 @@ final class SessionStore: ObservableObject {
             return
         }
         await run {
-            authState = try await client.completeLogin(phone: phone, code: code, password: password?.isEmpty == true ? nil : password)
+            if telegramSyncMode {
+                let state = try await client.telegramVerifyCode(phone: phone, code: code, password: password?.isEmpty == true ? nil : password)
+                authState = AuthState(authorized: state.authorized, phone: state.phone, userDisplayName: state.userDisplayName)
+            } else {
+                authState = try await client.completeLogin(phone: phone, code: code, password: password?.isEmpty == true ? nil : password)
+            }
         }
     }
 
@@ -103,7 +131,11 @@ final class SessionStore: ObservableObject {
             return
         }
         await run {
-            dialogs = try await client.dialogs()
+            if telegramSyncMode {
+                dialogs = try await client.telegramDialogs()
+            } else {
+                dialogs = try await client.dialogs()
+            }
         }
     }
 
@@ -114,7 +146,11 @@ final class SessionStore: ObservableObject {
             return
         }
         await run {
-            messages = try await client.messages(chatId: dialog.id)
+            if telegramSyncMode {
+                messages = try await client.telegramMessages(chatId: dialog.id)
+            } else {
+                messages = try await client.messages(chatId: dialog.id)
+            }
         }
     }
 
@@ -130,9 +166,18 @@ final class SessionStore: ObservableObject {
             return
         }
         await run {
-            let sent = try await client.sendMessage(chatId: dialog.id, text: text)
+            let sent: MessageItem
+            if telegramSyncMode {
+                sent = try await client.telegramSendMessage(chatId: dialog.id, text: text)
+            } else {
+                sent = try await client.sendMessage(chatId: dialog.id, text: text)
+            }
             messages.append(sent)
-            dialogs = try await client.dialogs()
+            if telegramSyncMode {
+                dialogs = try await client.telegramDialogs()
+            } else {
+                dialogs = try await client.dialogs()
+            }
         }
     }
 
@@ -194,6 +239,6 @@ final class SessionStore: ObservableObject {
 
     private func demoDialog(id: Int64, title: String, muted: Bool) -> DialogItem {
         let latest = demoMessages[id]?.max { $0.date < $1.date }
-        return DialogItem(id: id, title: title, lastMessage: latest?.text, unreadCount: id == 1 ? 0 : (id == 3 ? 1 : 0), isMuted: muted)
+        return DialogItem(id: id, title: title, lastMessage: latest?.text, unreadCount: id == 1 ? 0 : (id == 3 ? 1 : 0), isMuted: muted, avatarUrl: nil)
     }
 }

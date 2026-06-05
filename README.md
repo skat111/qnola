@@ -6,6 +6,7 @@ The repository now contains three tracks:
 
 - `apps/ios`: Qnola, a SwiftUI iOS client with dark Liquid Glass chat UI, demo mode, and first-party qnola API client scaffolding.
 - `backend/qnola-api`: first-party FastAPI backend with `/v1` REST, WebSocket realtime, auth, chats, messages, and uploads.
+- `backend/qnola-api` Telegram sync bridge: optional `/v1/telegram/*` endpoints for personal Telegram dialogs, messages, sending, and avatars through Telethon.
 - `backend/telethon`: deprecated Telegram bridge prototype kept for reference.
 - Telegram-iOS wrapper scripts: an experimental upstream Telegram iOS build path that still needs Apple provisioning for device IPA.
 

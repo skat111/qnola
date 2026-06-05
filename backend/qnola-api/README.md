@@ -31,6 +31,32 @@ Until an SMS provider is wired, the dev login code is controlled by:
 QNOLA_DEV_SMS_CODE=111111
 ```
 
+## Telegram Sync Bridge
+
+The first-party backend can also expose a personal Telegram sync bridge for
+development builds. It uses Telethon with your own Telegram API credentials and
+stores one local Telegram session on the server.
+
+```bash
+QNOLA_TELEGRAM_API_ID=123456
+QNOLA_TELEGRAM_API_HASH=your_hash
+QNOLA_TELEGRAM_SESSION_PATH=./data/telegram
+uvicorn app.main:app --reload
+```
+
+Bridge endpoints live under `/v1/telegram/*`:
+
+- `GET /v1/telegram/state`
+- `POST /v1/telegram/send-code`
+- `POST /v1/telegram/verify-code`
+- `GET /v1/telegram/dialogs`
+- `GET /v1/telegram/dialogs/{id}/messages`
+- `POST /v1/telegram/dialogs/{id}/send`
+- `GET /v1/telegram/avatars/{peerId}.jpg`
+
+This is a compatibility bridge, not the final multi-user qnola account model.
+Do not use official Telegram application keys.
+
 ## Tests
 
 ```bash

@@ -103,6 +103,44 @@ final class APIClient {
         try await delete("/v1/messages/\(id)")
     }
 
+    func telegramState() async throws -> TelegramAuthState {
+        try await get("/v1/telegram/state")
+    }
+
+    func telegramSendLoginCode(phone: String) async throws {
+        let _: EmptyResponse = try await post("/v1/telegram/send-code", body: TelegramSendCodeRequest(phone: phone))
+    }
+
+    func telegramVerifyCode(phone: String, code: String, password: String?) async throws -> TelegramAuthState {
+        try await post("/v1/telegram/verify-code", body: TelegramVerifyCodeRequest(phone: phone, code: code, password: password))
+    }
+
+    func telegramDialogs() async throws -> [DialogItem] {
+        let items: [TelegramDialog] = try await get("/v1/telegram/dialogs")
+        return items.map { dialog in
+            DialogItem(
+                id: dialog.id,
+                title: dialog.title,
+                lastMessage: dialog.lastMessage,
+                unreadCount: dialog.unreadCount,
+                isMuted: dialog.isMuted,
+                avatarUrl: absoluteURLString(dialog.avatarUrl)
+            )
+        }
+    }
+
+    func telegramMessages(chatId: Int64) async throws -> [MessageItem] {
+        let items: [TelegramMessage] = try await get("/v1/telegram/dialogs/\(chatId)/messages")
+        return items.map {
+            MessageItem(id: $0.id, senderName: $0.senderName, text: $0.text, date: $0.date, outgoing: $0.outgoing)
+        }
+    }
+
+    func telegramSendMessage(chatId: Int64, text: String) async throws -> MessageItem {
+        let sent: TelegramMessage = try await post("/v1/telegram/dialogs/\(chatId)/send", body: TelegramSendTextRequest(text: text))
+        return MessageItem(id: sent.id, senderName: sent.senderName, text: sent.text, date: sent.date, outgoing: sent.outgoing)
+    }
+
     private func get<T: Decodable>(_ path: String) async throws -> T {
         var request = URLRequest(url: makeURL(path))
         request.httpMethod = "GET"
@@ -133,6 +171,11 @@ final class APIClient {
 
     private func makeURL(_ path: String) -> URL {
         URL(string: path, relativeTo: baseURL)?.absoluteURL ?? baseURL.appending(path: path.trimmingCharacters(in: CharacterSet(charactersIn: "/")))
+    }
+
+    private func absoluteURLString(_ value: String?) -> String? {
+        guard let value, !value.isEmpty else { return nil }
+        return URL(string: value, relativeTo: baseURL)?.absoluteURL.absoluteString
     }
 
     private func perform<T: Decodable>(_ request: URLRequest) async throws -> T {

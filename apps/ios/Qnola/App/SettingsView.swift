@@ -43,6 +43,8 @@ struct SettingsView: View {
                         .textInputAutocapitalization(.never)
                         .keyboardType(.URL)
                         .disabled(store.demoMode)
+                    Toggle("Telegram Sync", isOn: $store.telegramSyncMode)
+                        .disabled(store.demoMode)
                     Button {
                         Task { await store.refreshAuth() }
                     } label: {

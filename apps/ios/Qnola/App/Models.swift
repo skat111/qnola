@@ -117,6 +117,7 @@ struct DialogItem: Codable, Identifiable, Hashable {
     let lastMessage: String?
     let unreadCount: Int
     let isMuted: Bool
+    let avatarUrl: String?
 }
 
 struct MessageItem: Codable, Identifiable, Hashable {
@@ -203,4 +204,44 @@ struct UploadResponse: Codable, Hashable {
 
 struct APIErrorPayload: Codable {
     let detail: String
+}
+
+struct TelegramAuthState: Codable, Hashable {
+    let enabled: Bool
+    let authorized: Bool
+    let phone: String?
+    let userDisplayName: String?
+}
+
+struct TelegramDialog: Codable, Identifiable, Hashable {
+    let id: Int64
+    let title: String
+    let lastMessage: String?
+    let unreadCount: Int
+    let isMuted: Bool
+    let avatarUrl: String?
+    let source: String?
+}
+
+struct TelegramMessage: Codable, Identifiable, Hashable {
+    let id: Int64
+    let senderName: String?
+    let text: String
+    let date: Date
+    let outgoing: Bool
+    let source: String?
+}
+
+struct TelegramSendCodeRequest: Codable {
+    let phone: String
+}
+
+struct TelegramVerifyCodeRequest: Codable {
+    let phone: String
+    let code: String
+    let password: String?
+}
+
+struct TelegramSendTextRequest: Codable {
+    let text: String
 }

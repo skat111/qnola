@@ -90,3 +90,20 @@ Server event examples:
 { "type": "typing", "chatId": 1, "userId": 2 }
 { "type": "read", "chatId": 1, "userId": 2 }
 ```
+
+## Telegram Sync Bridge
+
+For a development build that mirrors Telegram dialogs, the same backend exposes
+an optional bridge under `/v1/telegram`. The bridge is enabled only when the
+server has `QNOLA_TELEGRAM_API_ID` and `QNOLA_TELEGRAM_API_HASH`.
+
+- `GET /v1/telegram/state`
+- `POST /v1/telegram/send-code`
+- `POST /v1/telegram/verify-code`
+- `GET /v1/telegram/dialogs`
+- `GET /v1/telegram/dialogs/{id}/messages`
+- `POST /v1/telegram/dialogs/{id}/send`
+- `GET /v1/telegram/avatars/{peerId}.jpg`
+
+Dialog payloads include `avatarUrl` so the iOS chat list can show Telegram
+profile photos when available.

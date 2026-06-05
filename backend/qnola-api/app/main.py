@@ -15,6 +15,8 @@ from pydantic import BaseModel, Field
 from sqlalchemy import Boolean, DateTime, Enum as SAEnum, ForeignKey, Integer, String, Text, create_engine, select
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, relationship, sessionmaker
 
+from app.telegram_bridge import router as telegram_router
+
 
 DATABASE_URL = os.environ.get("QNOLA_DATABASE_URL", "sqlite:///./data/qnola.db")
 JWT_SECRET = os.environ.get("QNOLA_JWT_SECRET", "dev-secret-change-me")
@@ -317,6 +319,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.include_router(telegram_router)
 
 
 @app.get("/health")

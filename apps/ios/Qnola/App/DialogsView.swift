@@ -73,7 +73,7 @@ struct DialogRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            AvatarView(title: store.streamerMode ? "Hidden Chat" : dialog.title, id: dialog.id)
+            AvatarView(title: store.streamerMode ? "Hidden Chat" : dialog.title, id: dialog.id, avatarUrl: store.streamerMode ? nil : dialog.avatarUrl)
 
             VStack(alignment: .leading, spacing: 5) {
                 HStack(spacing: 8) {
@@ -123,6 +123,7 @@ struct DialogRow: View {
 struct AvatarView: View {
     let title: String
     let id: Int64
+    var avatarUrl: String? = nil
 
     var body: some View {
         Circle()
@@ -135,16 +136,32 @@ struct AvatarView: View {
             )
             .frame(width: 52, height: 52)
             .overlay {
-                if id == 1 {
+                if let avatarUrl, let url = URL(string: avatarUrl) {
+                    AsyncImage(url: url) { phase in
+                        switch phase {
+                        case let .success(image):
+                            image
+                                .resizable()
+                                .scaledToFill()
+                        default:
+                            placeholder
+                        }
+                    }
+                    .clipShape(Circle())
+                } else if id == 1 {
                     Image(systemName: "bookmark.fill")
                         .font(.system(size: 21, weight: .semibold))
                         .foregroundStyle(.white)
                 } else {
-                    Text(initials)
-                        .font(.system(size: 19, weight: .semibold))
-                        .foregroundStyle(.white)
+                    placeholder
                 }
             }
+    }
+
+    private var placeholder: some View {
+        Text(initials)
+            .font(.system(size: 19, weight: .semibold))
+            .foregroundStyle(.white)
     }
 
     private var initials: String {
