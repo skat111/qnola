@@ -2,7 +2,6 @@ import SwiftUI
 import UIKit
 import UserNotifications
 
-@MainActor
 final class PushNotificationDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
     func application(
         _ application: UIApplication,
