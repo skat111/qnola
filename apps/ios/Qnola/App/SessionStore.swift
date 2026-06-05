@@ -42,7 +42,7 @@ final class SessionStore: ObservableObject {
     @Published var streamerMode = UserDefaults.standard.bool(forKey: "streamerMode") {
         didSet { UserDefaults.standard.set(streamerMode, forKey: "streamerMode") }
     }
-    @Published var liquidGlassMessages = true {
+    @Published var liquidGlassMessages = false {
         didSet { UserDefaults.standard.set(liquidGlassMessages, forKey: "liquidGlassMessages") }
     }
     @Published var lastError: String?
@@ -58,7 +58,7 @@ final class SessionStore: ObservableObject {
         self.profileUsername = UserDefaults.standard.string(forKey: "profileUsername") ?? "@alex"
         self.profileBio = UserDefaults.standard.string(forKey: "profileBio") ?? "qnola demo profile"
         self.backendURLString = savedURL
-        self.liquidGlassMessages = UserDefaults.standard.object(forKey: "liquidGlassMessages") as? Bool ?? true
+        self.liquidGlassMessages = UserDefaults.standard.object(forKey: "liquidGlassMessages") as? Bool ?? false
         self.client = APIClient(baseURL: URL(string: savedURL) ?? URL(string: "http://127.0.0.1:8000")!)
         seedDemoData()
         if demoMode {
@@ -121,7 +121,6 @@ final class SessionStore: ObservableObject {
     func sendMessage(_ text: String) async {
         guard let dialog = selectedDialog else { return }
         if demoMode {
-            guard dialog.id == 1 else { return }
             let sent = MessageItem(id: nextDemoMessageId, senderName: nil, text: text, date: Date(), outgoing: true)
             nextDemoMessageId += 1
             demoMessages[dialog.id, default: []].append(sent)

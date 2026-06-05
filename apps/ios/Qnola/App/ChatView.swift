@@ -42,7 +42,7 @@ struct ChatView: View {
                     }
                 }
 
-                ChatComposer(draft: $draft, isFocused: $isComposerFocused, isEnabled: canSendMessages) {
+                ChatComposer(draft: $draft, isFocused: $isComposerFocused) {
                     sendDraft()
                 }
             }
@@ -73,13 +73,9 @@ struct ChatView: View {
 
     private func sendDraft() {
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard canSendMessages, !text.isEmpty else { return }
+        guard !text.isEmpty else { return }
         draft = ""
         Task { await store.sendMessage(text) }
-    }
-
-    private var canSendMessages: Bool {
-        !store.demoMode || dialog.id == 1
     }
 }
 
@@ -178,7 +174,7 @@ struct MessageBubbleSurface: ViewModifier {
 
     @ViewBuilder
     func body(content: Content) -> some View {
-        let shape = RoundedRectangle(cornerRadius: 18, style: .continuous)
+        let shape = TelegramBubbleShape(outgoing: outgoing)
         if glass {
             #if compiler(>=6.2)
             if #available(iOS 26.0, *) {
@@ -202,17 +198,42 @@ struct MessageBubbleSurface: ViewModifier {
         }
     }
 
-    private func fallback(content: Content, shape: RoundedRectangle) -> some View {
+    private func fallback(content: Content, shape: TelegramBubbleShape) -> some View {
         content
             .background(.ultraThinMaterial, in: shape)
             .overlay(shape.stroke(.white.opacity(0.12), lineWidth: 1))
     }
 }
 
+struct TelegramBubbleShape: Shape {
+    let outgoing: Bool
+
+    func path(in rect: CGRect) -> Path {
+        let tail: CGFloat = 6
+        let radius: CGFloat = 18
+        let body = outgoing
+            ? CGRect(x: rect.minX, y: rect.minY, width: rect.width - tail, height: rect.height)
+            : CGRect(x: rect.minX + tail, y: rect.minY, width: rect.width - tail, height: rect.height)
+
+        var path = Path(roundedRect: body, cornerRadius: radius)
+        if outgoing {
+            path.move(to: CGPoint(x: body.maxX - 8, y: body.maxY - 10))
+            path.addQuadCurve(to: CGPoint(x: rect.maxX, y: body.maxY), control: CGPoint(x: body.maxX + 2, y: body.maxY - 1))
+            path.addLine(to: CGPoint(x: body.maxX - 3, y: body.maxY - 2))
+            path.closeSubpath()
+        } else {
+            path.move(to: CGPoint(x: body.minX + 8, y: body.maxY - 10))
+            path.addQuadCurve(to: CGPoint(x: rect.minX, y: body.maxY), control: CGPoint(x: body.minX - 2, y: body.maxY - 1))
+            path.addLine(to: CGPoint(x: body.minX + 3, y: body.maxY - 2))
+            path.closeSubpath()
+        }
+        return path
+    }
+}
+
 struct ChatComposer: View {
     @Binding var draft: String
     var isFocused: FocusState<Bool>.Binding
-    let isEnabled: Bool
     let onSend: () -> Void
 
     var body: some View {
@@ -225,7 +246,7 @@ struct ChatComposer: View {
             .foregroundStyle(.secondary)
             .disabled(true)
 
-            TextField(isEnabled ? "Message" : "Demo chat is read-only", text: $draft, axis: .vertical)
+            TextField("Message", text: $draft, axis: .vertical)
                 .font(.system(size: 16))
                 .lineLimit(1...5)
                 .padding(.horizontal, 13)
@@ -235,7 +256,6 @@ struct ChatComposer: View {
                     Capsule().stroke(Color(.separator).opacity(0.35), lineWidth: 0.5)
                 }
                 .focused(isFocused)
-                .disabled(!isEnabled)
 
             Button(action: onSend) {
                 Image(systemName: draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "mic.fill" : "paperplane.fill")
@@ -244,8 +264,8 @@ struct ChatComposer: View {
                     .background(Color.telegramBlue, in: Circle())
                     .foregroundStyle(.white)
             }
-            .disabled(!isEnabled || draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-            .opacity((!isEnabled || draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) ? 0.65 : 1)
+            .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            .opacity(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0.65 : 1)
         }
         .padding(.horizontal, 8)
         .padding(.top, 7)

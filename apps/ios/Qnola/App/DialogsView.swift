@@ -36,6 +36,7 @@ struct DialogsView: View {
             }
             .navigationTitle("Chats")
             .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always))
+            .tint(.telegramBlue)
             .refreshable {
                 await store.refreshDialogs()
             }
@@ -49,6 +50,7 @@ struct DialogsView: View {
                         Task { await store.refreshDialogs() }
                     } label: {
                         Image(systemName: "square.and.pencil")
+                            .font(.system(size: 17, weight: .semibold))
                     }
                     .accessibilityLabel("New chat")
                 }
@@ -89,7 +91,7 @@ struct DialogRow: View {
 
                     Spacer(minLength: 8)
 
-                    Text("now")
+                    Text(dialog.id == 1 ? "Saved" : "now")
                         .font(.system(size: 13))
                         .foregroundStyle(.secondary)
                 }
@@ -114,7 +116,7 @@ struct DialogRow: View {
                 }
             }
         }
-        .frame(minHeight: 72)
+        .frame(minHeight: 74)
         .contentShape(Rectangle())
     }
 }
@@ -134,9 +136,15 @@ struct AvatarView: View {
             )
             .frame(width: 52, height: 52)
             .overlay {
-                Text(initials)
-                    .font(.system(size: 19, weight: .semibold))
-                    .foregroundStyle(.white)
+                if id == 1 {
+                    Image(systemName: "bookmark.fill")
+                        .font(.system(size: 21, weight: .semibold))
+                        .foregroundStyle(.white)
+                } else {
+                    Text(initials)
+                        .font(.system(size: 19, weight: .semibold))
+                        .foregroundStyle(.white)
+                }
             }
     }
 
@@ -152,6 +160,9 @@ struct AvatarView: View {
     }
 
     private var avatarColors: [Color] {
+        if id == 1 {
+            return [Color.telegramBlue.opacity(0.9), .blue]
+        }
         let palettes: [[Color]] = [
             [.cyan, .blue],
             [.green, .teal],
