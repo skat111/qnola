@@ -1,5 +1,6 @@
 import Foundation
 
+@MainActor
 final class APIClient {
     var baseURL: URL
     private let decoder: JSONDecoder
@@ -85,4 +86,3 @@ enum APIClientError: LocalizedError {
         }
     }
 }
-
