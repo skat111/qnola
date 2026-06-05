@@ -25,6 +25,12 @@ struct LoginView: View {
 
                 Section {
                     Button {
+                        store.demoMode = true
+                    } label: {
+                        Label("Open Demo Mode", systemImage: "play.circle")
+                    }
+
+                    Button {
                         Task {
                             if codeSent {
                                 await store.completeLogin(phone: phone, code: code, password: password)

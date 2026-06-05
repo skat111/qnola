@@ -42,7 +42,7 @@ struct ChatView: View {
                     }
                 }
 
-                ChatComposer(draft: $draft, isFocused: $isComposerFocused) {
+                ChatComposer(draft: $draft, isFocused: $isComposerFocused, isEnabled: canSendMessages) {
                     sendDraft()
                 }
             }
@@ -73,9 +73,13 @@ struct ChatView: View {
 
     private func sendDraft() {
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return }
+        guard canSendMessages, !text.isEmpty else { return }
         draft = ""
         Task { await store.sendMessage(text) }
+    }
+
+    private var canSendMessages: Bool {
+        !store.demoMode || dialog.id == 1
     }
 }
 
@@ -208,6 +212,7 @@ struct MessageBubbleSurface: ViewModifier {
 struct ChatComposer: View {
     @Binding var draft: String
     var isFocused: FocusState<Bool>.Binding
+    let isEnabled: Bool
     let onSend: () -> Void
 
     var body: some View {
@@ -220,7 +225,7 @@ struct ChatComposer: View {
             .foregroundStyle(.secondary)
             .disabled(true)
 
-            TextField("Message", text: $draft, axis: .vertical)
+            TextField(isEnabled ? "Message" : "Demo chat is read-only", text: $draft, axis: .vertical)
                 .font(.system(size: 16))
                 .lineLimit(1...5)
                 .padding(.horizontal, 13)
@@ -230,6 +235,7 @@ struct ChatComposer: View {
                     Capsule().stroke(Color(.separator).opacity(0.35), lineWidth: 0.5)
                 }
                 .focused(isFocused)
+                .disabled(!isEnabled)
 
             Button(action: onSend) {
                 Image(systemName: draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "mic.fill" : "paperplane.fill")
@@ -238,8 +244,8 @@ struct ChatComposer: View {
                     .background(Color.telegramBlue, in: Circle())
                     .foregroundStyle(.white)
             }
-            .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-            .opacity(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0.65 : 1)
+            .disabled(!isEnabled || draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            .opacity((!isEnabled || draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) ? 0.65 : 1)
         }
         .padding(.horizontal, 8)
         .padding(.top, 7)
