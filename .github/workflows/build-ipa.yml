@@ -1,9 +1,6 @@
-name: Build Qnola IPA
+name: Build Telegram Fork IPA
 
 on:
-  push:
-    branches:
-      - main
   workflow_dispatch:
     inputs:
       telegram_ref:
