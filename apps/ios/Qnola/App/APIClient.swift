@@ -103,6 +103,10 @@ final class APIClient {
         try await delete("/v1/messages/\(id)")
     }
 
+    func registerPushToken(_ token: String, platform: String = "ios") async throws {
+        let _: EmptyResponse = try await post("/v1/devices/push-token", body: PushTokenRequest(token: token, platform: platform))
+    }
+
     func telegramState() async throws -> TelegramAuthState {
         try await get("/v1/telegram/state")
     }

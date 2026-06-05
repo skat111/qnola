@@ -92,6 +92,7 @@ private struct MessageDayGroup: Identifiable {
 
     var title: String {
         let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "ru_RU")
         formatter.doesRelativeDateFormatting = true
         formatter.dateStyle = .medium
         formatter.timeStyle = .none
@@ -132,7 +133,7 @@ struct ChatHeader: View {
                     .font(.system(size: 18, weight: .bold))
                     .foregroundStyle(.white)
                     .lineLimit(1)
-                Text(dialog.id == 1 ? "saved messages" : "был(а) вчера в 21:01")
+                Text(dialog.id == 1 ? "избранные сообщения" : "синхронизируется")
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(.white.opacity(0.46))
                     .lineLimit(1)
@@ -143,7 +144,7 @@ struct ChatHeader: View {
 
             Spacer(minLength: 0)
 
-            AvatarView(title: title, id: dialog.id)
+            AvatarView(title: title, id: dialog.id, avatarUrl: store.streamerMode ? nil : dialog.avatarUrl)
                 .frame(width: 46, height: 46)
                 .clipShape(Circle())
                 .overlay(Circle().stroke(Color.white.opacity(0.14), lineWidth: 1))
@@ -151,7 +152,7 @@ struct ChatHeader: View {
     }
 
     private var title: String {
-        store.streamerMode ? "Hidden Chat" : dialog.title
+        store.streamerMode ? "Скрытый чат" : dialog.title
     }
 }
 
@@ -167,12 +168,12 @@ struct MessageBubble: View {
 
             VStack(alignment: message.outgoing ? .trailing : .leading, spacing: 3) {
                 if !message.outgoing, let sender = message.senderName, !sender.isEmpty {
-                    Text(store.streamerMode ? "Hidden Sender" : sender)
+                    Text(store.streamerMode ? "Скрытый отправитель" : sender)
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(Color.telegramBlue)
                 }
 
-                Text(store.streamerMode ? "Message hidden" : message.text)
+                Text(store.streamerMode ? "Сообщение скрыто" : message.text)
                     .font(.system(size: 16))
                     .foregroundStyle(.white)
                     .fixedSize(horizontal: false, vertical: true)
@@ -368,6 +369,7 @@ struct ChatBackground: View {
 private extension Date {
     var chatTime: String {
         let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "ru_RU")
         formatter.dateStyle = .none
         formatter.timeStyle = .short
         return formatter.string(from: self)

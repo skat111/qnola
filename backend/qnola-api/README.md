@@ -57,6 +57,27 @@ Bridge endpoints live under `/v1/telegram/*`:
 This is a compatibility bridge, not the final multi-user qnola account model.
 Do not use official Telegram application keys.
 
+## Push Notifications
+
+The API accepts APNs device tokens at:
+
+```http
+POST /v1/devices/push-token
+Authorization: Bearer <accessToken>
+```
+
+Actual delivery is enabled when these environment variables are set:
+
+```bash
+QNOLA_APNS_KEY_ID=ABC123DEFG
+QNOLA_APNS_TEAM_ID=TEAMID1234
+QNOLA_APNS_BUNDLE_ID=com.skat111.qnola
+QNOLA_APNS_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----"
+QNOLA_APNS_SANDBOX=1
+```
+
+The iOS app requests permission and registers with APNs when it launches.
+
 ## Tests
 
 ```bash

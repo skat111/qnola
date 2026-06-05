@@ -8,6 +8,7 @@ final class SessionStore: ObservableObject {
             resetClient()
         }
     }
+
     @Published var demoMode = UserDefaults.standard.object(forKey: "demoMode") as? Bool ?? true {
         didSet {
             UserDefaults.standard.set(demoMode, forKey: "demoMode")
@@ -18,9 +19,11 @@ final class SessionStore: ObservableObject {
                 selectedDialog = nil
                 messages = []
                 authState = AuthState(authorized: false, phone: nil, userDisplayName: nil)
+                connectionStatus = "Не подключено"
             }
         }
     }
+
     @Published var telegramSyncMode = UserDefaults.standard.object(forKey: "telegramSyncMode") as? Bool ?? true {
         didSet {
             UserDefaults.standard.set(telegramSyncMode, forKey: "telegramSyncMode")
@@ -29,9 +32,11 @@ final class SessionStore: ObservableObject {
                 dialogs = []
                 selectedDialog = nil
                 messages = []
+                connectionStatus = "Не подключено"
             }
         }
     }
+
     @Published var profileName: String {
         didSet {
             UserDefaults.standard.set(profileName, forKey: "profileName")
@@ -46,6 +51,7 @@ final class SessionStore: ObservableObject {
     @Published var profileBio: String {
         didSet { UserDefaults.standard.set(profileBio, forKey: "profileBio") }
     }
+
     @Published var authState = AuthState(authorized: false, phone: nil, userDisplayName: nil)
     @Published var dialogs: [DialogItem] = []
     @Published var selectedDialog: DialogItem?
@@ -58,6 +64,8 @@ final class SessionStore: ObservableObject {
     }
     @Published var lastError: String?
     @Published var isLoading = false
+    @Published var connectionStatus = "Демо-режим"
+    @Published var lastSyncedAt: Date?
 
     private var client: APIClient
     private var demoMessages: [Int64: [MessageItem]] = [:]
@@ -65,9 +73,9 @@ final class SessionStore: ObservableObject {
 
     init() {
         let savedURL = UserDefaults.standard.string(forKey: "backendURLString") ?? "http://127.0.0.1:8000"
-        self.profileName = UserDefaults.standard.string(forKey: "profileName") ?? "Alex"
+        self.profileName = UserDefaults.standard.string(forKey: "profileName") ?? "Алекс"
         self.profileUsername = UserDefaults.standard.string(forKey: "profileUsername") ?? "@alex"
-        self.profileBio = UserDefaults.standard.string(forKey: "profileBio") ?? "qnola demo profile"
+        self.profileBio = UserDefaults.standard.string(forKey: "profileBio") ?? "Профиль qnola"
         self.backendURLString = savedURL
         self.liquidGlassMessages = UserDefaults.standard.object(forKey: "liquidGlassMessages") as? Bool ?? false
         self.client = APIClient(baseURL: URL(string: savedURL) ?? URL(string: "http://127.0.0.1:8000")!)
@@ -75,6 +83,11 @@ final class SessionStore: ObservableObject {
         if demoMode {
             enterDemoMode()
         }
+    }
+
+    var connectionSubtitle: String {
+        guard let lastSyncedAt else { return "Синхронизация еще не выполнялась" }
+        return "Обновлено \(lastSyncedAt.shortTime)"
     }
 
     func refreshAuth() async {
@@ -87,7 +100,7 @@ final class SessionStore: ObservableObject {
                 let state = try await client.telegramState()
                 authState = AuthState(authorized: state.authorized, phone: state.phone, userDisplayName: state.userDisplayName)
                 if !state.enabled {
-                    lastError = "Telegram bridge is not configured on the backend."
+                    lastError = "Telegram-мост не настроен на backend."
                 }
             } else {
                 authState = try await client.authState()
@@ -128,6 +141,7 @@ final class SessionStore: ObservableObject {
     func refreshDialogs() async {
         if demoMode {
             dialogs = demoDialogs()
+            markConnected("Демо-режим")
             return
         }
         await run {
@@ -143,6 +157,7 @@ final class SessionStore: ObservableObject {
         selectedDialog = dialog
         if demoMode {
             messages = demoMessages[dialog.id] ?? []
+            markConnected("Демо-режим")
             return
         }
         await run {
@@ -163,6 +178,7 @@ final class SessionStore: ObservableObject {
             messages = demoMessages[dialog.id] ?? []
             dialogs = demoDialogs()
             selectedDialog = dialogs.first { $0.id == dialog.id } ?? dialog
+            markConnected("Демо-режим")
             return
         }
         await run {
@@ -190,14 +206,22 @@ final class SessionStore: ObservableObject {
         lastError = nil
         do {
             try await operation()
+            markConnected(demoMode ? "Демо-режим" : (telegramSyncMode ? "Telegram подключен" : "Сервер подключен"))
         } catch {
             lastError = error.localizedDescription
+            connectionStatus = "Нет подключения"
         }
         isLoading = false
     }
 
+    private func markConnected(_ status: String) {
+        connectionStatus = status
+        lastSyncedAt = Date()
+    }
+
     private func enterDemoMode() {
         authState = AuthState(authorized: true, phone: nil, userDisplayName: profileName)
+        markConnected("Демо-режим")
         dialogs = demoDialogs()
         if selectedDialog == nil {
             selectedDialog = dialogs.first
@@ -212,7 +236,7 @@ final class SessionStore: ObservableObject {
         demoMessages = [
             1: [
                 MessageItem(id: 1, senderName: nil, text: "Здесь можно писать заметки, ссылки и черновики.", date: now.addingTimeInterval(-3600), outgoing: false),
-                MessageItem(id: 2, senderName: nil, text: "Это локальный демо-чат Избранные.", date: now.addingTimeInterval(-3300), outgoing: false)
+                MessageItem(id: 2, senderName: nil, text: "Это локальный демо-чат Избранное.", date: now.addingTimeInterval(-3300), outgoing: false)
             ],
             2: [
                 MessageItem(id: 3, senderName: "Mira", text: "Посмотри новый экран чата.", date: now.addingTimeInterval(-7200), outgoing: false),
@@ -230,7 +254,7 @@ final class SessionStore: ObservableObject {
 
     private func demoDialogs() -> [DialogItem] {
         [
-            demoDialog(id: 1, title: "Избранные", muted: false),
+            demoDialog(id: 1, title: "Избранное", muted: false),
             demoDialog(id: 2, title: "Mira", muted: false),
             demoDialog(id: 3, title: "Qnola Team", muted: true),
             demoDialog(id: 4, title: "Nika", muted: false)
@@ -240,5 +264,15 @@ final class SessionStore: ObservableObject {
     private func demoDialog(id: Int64, title: String, muted: Bool) -> DialogItem {
         let latest = demoMessages[id]?.max { $0.date < $1.date }
         return DialogItem(id: id, title: title, lastMessage: latest?.text, unreadCount: id == 1 ? 0 : (id == 3 ? 1 : 0), isMuted: muted, avatarUrl: nil)
+    }
+}
+
+private extension Date {
+    var shortTime: String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "ru_RU")
+        formatter.dateStyle = .none
+        formatter.timeStyle = .short
+        return formatter.string(from: self)
     }
 }

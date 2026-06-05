@@ -11,15 +11,15 @@ struct LoginView: View {
         NavigationStack {
             Form {
                 Section {
-                    TextField("Backend URL", text: $store.backendURLString)
+                    TextField("Адрес backend", text: $store.backendURLString)
                         .textInputAutocapitalization(.never)
                         .keyboardType(.URL)
-                    TextField("Phone", text: $phone)
+                    TextField("Телефон", text: $phone)
                         .keyboardType(.phonePad)
                     if codeSent {
-                        TextField("Code", text: $code)
+                        TextField("Код", text: $code)
                             .keyboardType(.numberPad)
-                        SecureField("2FA password", text: $password)
+                        SecureField("Пароль 2FA", text: $password)
                     }
                 }
 
@@ -27,7 +27,7 @@ struct LoginView: View {
                     Button {
                         store.demoMode = true
                     } label: {
-                        Label("Open Demo Mode", systemImage: "play.circle")
+                        Label("Открыть демо-режим", systemImage: "play.circle")
                     }
 
                     Button {
@@ -40,7 +40,7 @@ struct LoginView: View {
                             }
                         }
                     } label: {
-                        Label(codeSent ? "Sign In" : "Send Code", systemImage: codeSent ? "checkmark.circle" : "paperplane")
+                        Label(codeSent ? "Войти" : "Отправить код", systemImage: codeSent ? "checkmark.circle" : "paperplane")
                     }
                     .disabled(store.isLoading || phone.isEmpty || (codeSent && code.isEmpty))
                 }

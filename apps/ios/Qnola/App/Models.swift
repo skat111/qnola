@@ -206,6 +206,11 @@ struct APIErrorPayload: Codable {
     let detail: String
 }
 
+struct PushTokenRequest: Codable {
+    let token: String
+    let platform: String
+}
+
 struct TelegramAuthState: Codable, Hashable {
     let enabled: Bool
     let authorized: Bool

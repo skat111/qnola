@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import Boolean, DateTime, Enum as SAEnum, ForeignKey, Integer, String, Text, create_engine, select
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, relationship, sessionmaker
 
+from app.push import send_apns_notification
 from app.telegram_bridge import router as telegram_router
 
 
@@ -89,6 +90,17 @@ class SessionToken(Base):
     device_name: Mapped[str | None] = mapped_column(String(120))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
     revoked: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class PushDevice(Base):
+    __tablename__ = "push_devices"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    token: Mapped[str] = mapped_column(String(255), unique=True, index=True)
+    platform: Mapped[str] = mapped_column(String(20), default="ios")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
 
 
 class Chat(Base):
@@ -220,6 +232,11 @@ class UploadResponse(BaseModel):
     mimeType: str
     size: int
     url: str
+
+
+class PushTokenRequest(BaseModel):
+    token: str = Field(min_length=16, max_length=255)
+    platform: str = Field(default="ios", min_length=2, max_length=20)
 
 
 def get_db():
@@ -376,6 +393,19 @@ def logout(user: User = Depends(current_user), db: Session = Depends(get_db)):
     return {}
 
 
+@app.post("/v1/devices/push-token")
+def register_push_token(request: PushTokenRequest, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    device = db.scalar(select(PushDevice).where(PushDevice.token == request.token))
+    if device:
+        device.user_id = user.id
+        device.platform = request.platform
+        device.updated_at = now_utc()
+    else:
+        db.add(PushDevice(user_id=user.id, token=request.token, platform=request.platform))
+    db.commit()
+    return {"registered": True}
+
+
 @app.get("/v1/me", response_model=UserProfile)
 def get_me(user: User = Depends(current_user)):
     return user_to_profile(user)
@@ -511,6 +541,11 @@ async def send_message(chat_id: int, request: SendMessageRequest, user: User = D
     participant_ids = {participant.user_id for participant in chat.participants}
     payload = message_to_payload(db, message, user.id)
     await hub.publish(participant_ids, {"type": "message.created", "chatId": chat_id, "message": payload})
+    for device in db.scalars(select(PushDevice).where(PushDevice.user_id.in_(participant_ids - {user.id}))).all():
+        try:
+            await send_apns_notification(device.token, user.display_name or "qnola", request.text or "Новое сообщение")
+        except Exception:
+            pass
     return payload
 
 

@@ -79,6 +79,19 @@ Message statuses: `pending`, `sent`, `delivered`, `read`, `failed`.
 
 `POST /v1/uploads` accepts multipart field `file`.
 
+## Push Devices
+
+- `POST /v1/devices/push-token`
+
+Payload:
+
+```json
+{ "token": "apns-device-token", "platform": "ios" }
+```
+
+The endpoint stores APNs tokens for push-ready delivery. Production push sending
+still requires Apple APNs credentials on the backend.
+
 ## Realtime
 
 `WS /v1/realtime?token=<accessToken>`

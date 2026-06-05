@@ -17,26 +17,33 @@ struct DialogsView: View {
                 Color.black
                     .ignoresSafeArea()
 
-                List(visibleDialogs) { dialog in
-                    Button {
-                        path.append(dialog)
-                    } label: {
-                        DialogRow(dialog: dialog)
+                VStack(spacing: 0) {
+                    ConnectionStatusBar()
+                        .padding(.horizontal, 12)
+                        .padding(.top, 6)
+                        .padding(.bottom, 4)
+
+                    List(visibleDialogs) { dialog in
+                        Button {
+                            path.append(dialog)
+                        } label: {
+                            DialogRow(dialog: dialog)
+                        }
+                        .buttonStyle(.plain)
+                        .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 12))
+                        .listRowSeparator(.visible)
+                        .listRowBackground(Color.black)
                     }
-                    .buttonStyle(.plain)
-                    .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 12))
-                    .listRowSeparator(.visible)
-                    .listRowBackground(Color.black)
-                }
-                .listStyle(.plain)
-                .scrollContentBackground(.hidden)
-                .overlay {
-                    if visibleDialogs.isEmpty {
-                        ContentUnavailableView("No chats", systemImage: "bubble.left.and.bubble.right")
+                    .listStyle(.plain)
+                    .scrollContentBackground(.hidden)
+                    .overlay {
+                        if visibleDialogs.isEmpty {
+                            ContentUnavailableView("Нет чатов", systemImage: "bubble.left.and.bubble.right")
+                        }
                     }
                 }
             }
-            .navigationTitle("Chats")
+            .navigationTitle("Чаты")
             .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always))
             .tint(.telegramBlue)
             .refreshable {
@@ -44,7 +51,7 @@ struct DialogsView: View {
             }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button("Edit") {}
+                    Button("Править") {}
                         .disabled(true)
                 }
                 ToolbarItem(placement: .topBarTrailing) {
@@ -54,11 +61,15 @@ struct DialogsView: View {
                         Image(systemName: "square.and.pencil")
                             .font(.system(size: 17, weight: .semibold))
                     }
-                    .accessibilityLabel("New chat")
+                    .accessibilityLabel("Новый чат")
                 }
             }
             .task {
                 await store.refreshDialogs()
+                while !Task.isCancelled {
+                    try? await Task.sleep(nanoseconds: 10_000_000_000)
+                    await store.refreshDialogs()
+                }
             }
             .navigationDestination(for: DialogItem.self) { dialog in
                 ChatView(dialog: dialog)
@@ -73,11 +84,11 @@ struct DialogRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            AvatarView(title: store.streamerMode ? "Hidden Chat" : dialog.title, id: dialog.id, avatarUrl: store.streamerMode ? nil : dialog.avatarUrl)
+            AvatarView(title: store.streamerMode ? "Скрытый чат" : dialog.title, id: dialog.id, avatarUrl: store.streamerMode ? nil : dialog.avatarUrl)
 
             VStack(alignment: .leading, spacing: 5) {
                 HStack(spacing: 8) {
-                    Text(store.streamerMode ? "Hidden Chat" : dialog.title)
+                    Text(store.streamerMode ? "Скрытый чат" : dialog.title)
                         .font(.system(size: 17, weight: .semibold))
                         .foregroundStyle(.white)
                         .lineLimit(1)
@@ -90,13 +101,13 @@ struct DialogRow: View {
 
                     Spacer(minLength: 8)
 
-                    Text(dialog.id == 1 ? "Saved" : "now")
+                    Text(dialog.id == 1 ? "Избр." : "сейчас")
                         .font(.system(size: 13))
                         .foregroundStyle(.secondary)
                 }
 
                 HStack(spacing: 8) {
-                    Text(store.streamerMode ? "Preview hidden" : (dialog.lastMessage ?? "No messages yet"))
+                    Text(store.streamerMode ? "Предпросмотр скрыт" : (dialog.lastMessage ?? "Сообщений пока нет"))
                         .font(.system(size: 15))
                         .foregroundStyle(.white.opacity(0.52))
                         .lineLimit(1)
@@ -117,6 +128,42 @@ struct DialogRow: View {
         }
         .frame(minHeight: 74)
         .contentShape(Rectangle())
+    }
+}
+
+struct ConnectionStatusBar: View {
+    @EnvironmentObject private var store: SessionStore
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Circle()
+                .fill(statusColor)
+                .frame(width: 8, height: 8)
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text(store.connectionStatus)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.white)
+                Text(store.connectionSubtitle)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.55))
+            }
+
+            Spacer()
+
+            if store.isLoading {
+                ProgressView()
+                    .controlSize(.small)
+                    .tint(.white.opacity(0.7))
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .modifier(LiquidGlassCapsule())
+    }
+
+    private var statusColor: Color {
+        store.connectionStatus == "Нет подключения" ? .red : .green
     }
 }
 

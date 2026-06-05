@@ -36,3 +36,7 @@ def test_auth_chat_message_flow():
     messages = client.get(f"/v1/chats/{chat_id}/messages", headers=auth)
     assert messages.status_code == 200
     assert messages.json()[0]["text"] == "hello"
+
+    push = client.post("/v1/devices/push-token", json={"token": "a" * 64, "platform": "ios"}, headers=auth)
+    assert push.status_code == 200
+    assert push.json()["registered"] is True

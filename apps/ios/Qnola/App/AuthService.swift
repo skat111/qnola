@@ -23,6 +23,7 @@ final class AuthService: ObservableObject {
     func verifyCode(phone: String, code: String, displayName: String?, username: String?) async throws {
         let tokens = try await client.v1VerifyCode(phone: phone, code: code, displayName: displayName, username: username, deviceName: UIDevice.current.name)
         store(tokens)
+        await registerSavedPushToken()
     }
 
     func refreshIfPossible() async {
@@ -30,6 +31,7 @@ final class AuthService: ObservableObject {
         do {
             let tokens = try await client.v1Refresh(refreshToken: refreshToken)
             store(tokens)
+            await registerSavedPushToken()
         } catch {
             signOutLocally()
         }
@@ -55,6 +57,11 @@ final class AuthService: ObservableObject {
         client.accessToken = tokens.accessToken
         currentUser = tokens.user
         isAuthenticated = true
+    }
+
+    private func registerSavedPushToken() async {
+        guard let token = defaults.string(forKey: "apnsDeviceToken") else { return }
+        try? await client.registerPushToken(token)
     }
 
     private func signOutLocally() {

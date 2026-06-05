@@ -15,7 +15,7 @@ struct RootView: View {
             await store.refreshAuth()
         }
         .alert("qnola", isPresented: Binding(get: { store.lastError != nil }, set: { if !$0 { store.lastError = nil } })) {
-            Button("OK", role: .cancel) {}
+            Button("ОК", role: .cancel) {}
         } message: {
             Text(store.lastError ?? "")
         }
@@ -27,9 +27,9 @@ struct MainShellView: View {
     var body: some View {
         TabView {
             DialogsView()
-                .tabItem { Label("Chats", systemImage: "bubble.left.and.bubble.right") }
+                .tabItem { Label("Чаты", systemImage: "bubble.left.and.bubble.right") }
             SettingsView()
-                .tabItem { Label("qnola", systemImage: "slider.horizontal.3") }
+                .tabItem { Label("Настройки", systemImage: "slider.horizontal.3") }
         }
         .tint(.telegramBlue)
     }
