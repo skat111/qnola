@@ -11,18 +11,17 @@ struct DialogsView: View {
     }
 
     var body: some View {
-        NavigationSplitView {
+        NavigationStack {
             ZStack {
                 Color(.systemGroupedBackground)
                     .ignoresSafeArea()
 
                 List(visibleDialogs) { dialog in
-                    Button {
-                        store.selectedDialog = dialog
+                    NavigationLink {
+                        ChatView(dialog: dialog)
                     } label: {
                         DialogRow(dialog: dialog)
                     }
-                    .buttonStyle(.plain)
                     .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 12))
                     .listRowSeparator(.visible)
                     .listRowBackground(Color(.systemBackground))
@@ -57,12 +56,6 @@ struct DialogsView: View {
             }
             .task {
                 await store.refreshDialogs()
-            }
-        } detail: {
-            if let dialog = store.selectedDialog {
-                ChatView(dialog: dialog)
-            } else {
-                ContentUnavailableView("Select a chat", systemImage: "bubble.left.and.bubble.right")
             }
         }
     }

@@ -75,7 +75,10 @@ struct ChatView: View {
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
         draft = ""
-        Task { await store.sendMessage(text) }
+        Task {
+            await store.loadMessages(for: dialog)
+            await store.sendMessage(text)
+        }
     }
 }
 
