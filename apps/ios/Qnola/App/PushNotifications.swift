@@ -22,7 +22,7 @@ final class PushNotificationDelegate: NSObject, UIApplicationDelegate, UNUserNot
         UserDefaults.standard.set(error.localizedDescription, forKey: "apnsRegistrationError")
     }
 
-    func userNotificationCenter(
+    nonisolated func userNotificationCenter(
         _ center: UNUserNotificationCenter,
         willPresent notification: UNNotification
     ) async -> UNNotificationPresentationOptions {
