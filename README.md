@@ -2,9 +2,11 @@
 
 Qnola is a build wrapper for a private iOS Telegram fork.
 
-The repository now contains two tracks:
+The repository now contains three tracks:
 
-- `apps/ios`: Qnola, a SwiftUI iOS client that talks to a Telethon backend and can produce an unsigned IPA for Sideloadly.
+- `apps/ios`: Qnola, a SwiftUI iOS client with dark Liquid Glass chat UI, demo mode, and first-party qnola API client scaffolding.
+- `backend/qnola-api`: first-party FastAPI backend with `/v1` REST, WebSocket realtime, auth, chats, messages, and uploads.
+- `backend/telethon`: deprecated Telegram bridge prototype kept for reference.
 - Telegram-iOS wrapper scripts: an experimental upstream Telegram iOS build path that still needs Apple provisioning for device IPA.
 
 ## Sources
@@ -19,7 +21,7 @@ The repository now contains two tracks:
 Use this for an installable IPA without Telegram-iOS Bazel signing issues.
 
 - iOS app: `apps/ios`
-- Telegram backend: `backend/telethon`
+- Backend: `backend/qnola-api`
 - App icon source: `assets/q.svg` from https://www.svgrepo.com/show/535581/q.svg
 - GitHub Actions workflow: `Build Qnola IPA`
 - Artifact: `qnola-ipa`

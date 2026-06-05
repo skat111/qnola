@@ -3,6 +3,7 @@ import Foundation
 @MainActor
 final class APIClient {
     var baseURL: URL
+    var accessToken: String?
     private let decoder: JSONDecoder
     private let encoder: JSONEncoder
 
@@ -39,21 +40,106 @@ final class APIClient {
         try await post("/messages/send", body: SendMessageRequest(chatId: chatId, text: text))
     }
 
+    func v1SendCode(phone: String) async throws {
+        let _: EmptyResponse = try await post("/v1/auth/send-code", body: AuthSendCodeRequest(phone: phone))
+    }
+
+    func v1VerifyCode(phone: String, code: String, displayName: String?, username: String?, deviceName: String?) async throws -> AuthTokens {
+        try await post("/v1/auth/verify-code", body: AuthVerifyCodeRequest(phone: phone, code: code, displayName: displayName, username: username, deviceName: deviceName))
+    }
+
+    func v1Refresh(refreshToken: String) async throws -> AuthTokens {
+        try await post("/v1/auth/refresh", body: AuthRefreshRequest(refreshToken: refreshToken))
+    }
+
+    func v1Logout() async throws {
+        let _: EmptyResponse = try await post("/v1/auth/logout", body: EmptyResponse())
+    }
+
+    func me() async throws -> UserProfile {
+        try await get("/v1/me")
+    }
+
+    func patchMe(displayName: String?, username: String?, bio: String?) async throws -> UserProfile {
+        try await patch("/v1/me", body: PatchMeRequest(displayName: displayName, username: username, bio: bio))
+    }
+
+    func searchUsers(username: String) async throws -> [UserProfile] {
+        try await get("/v1/users/search?username=\(username.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? username)")
+    }
+
+    func chats() async throws -> [Chat] {
+        try await get("/v1/chats")
+    }
+
+    func createPrivateChat(userId: Int64) async throws -> Chat {
+        try await post("/v1/chats/private", body: CreatePrivateChatRequest(userId: userId))
+    }
+
+    func createGroupChat(title: String, participantIds: [Int64]) async throws -> Chat {
+        try await post("/v1/chats/group", body: CreateGroupChatRequest(title: title, participantIds: participantIds))
+    }
+
+    func patchChat(id: Int64, title: String?, isMuted: Bool?, isPinned: Bool?, isArchived: Bool?) async throws -> Chat {
+        try await patch("/v1/chats/\(id)", body: PatchChatRequest(title: title, isMuted: isMuted, isPinned: isPinned, isArchived: isArchived))
+    }
+
+    func v1Messages(chatId: Int64, before: Int64? = nil, after: Int64? = nil, limit: Int = 50) async throws -> [Message] {
+        var query = ["limit=\(limit)"]
+        if let before { query.append("before=\(before)") }
+        if let after { query.append("after=\(after)") }
+        return try await get("/v1/chats/\(chatId)/messages?\(query.joined(separator: "&"))")
+    }
+
+    func v1SendMessage(chatId: Int64, request: SendV1MessageRequest) async throws -> Message {
+        try await post("/v1/chats/\(chatId)/messages", body: request)
+    }
+
+    func patchMessage(id: Int64, text: String) async throws -> Message {
+        try await patch("/v1/messages/\(id)", body: PatchMessageRequest(text: text))
+    }
+
+    func deleteMessage(id: Int64) async throws {
+        try await delete("/v1/messages/\(id)")
+    }
+
     private func get<T: Decodable>(_ path: String) async throws -> T {
-        var request = URLRequest(url: baseURL.appending(path: path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))))
+        var request = URLRequest(url: makeURL(path))
         request.httpMethod = "GET"
         return try await perform(request)
     }
 
     private func post<T: Decodable, Body: Encodable>(_ path: String, body: Body) async throws -> T {
-        var request = URLRequest(url: baseURL.appending(path: path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))))
+        var request = URLRequest(url: makeURL(path))
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try encoder.encode(body)
         return try await perform(request)
     }
 
+    private func patch<T: Decodable, Body: Encodable>(_ path: String, body: Body) async throws -> T {
+        var request = URLRequest(url: makeURL(path))
+        request.httpMethod = "PATCH"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try encoder.encode(body)
+        return try await perform(request)
+    }
+
+    private func delete(_ path: String) async throws {
+        var request = URLRequest(url: makeURL(path))
+        request.httpMethod = "DELETE"
+        let _: EmptyResponse = try await perform(request)
+    }
+
+    private func makeURL(_ path: String) -> URL {
+        URL(string: path, relativeTo: baseURL)?.absoluteURL ?? baseURL.appending(path: path.trimmingCharacters(in: CharacterSet(charactersIn: "/")))
+    }
+
     private func perform<T: Decodable>(_ request: URLRequest) async throws -> T {
+        var request = request
+        if let accessToken {
+            request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        }
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse else {
             throw APIClientError.invalidResponse

@@ -8,6 +8,9 @@ telegram-ios-src/
 telegram-bazel-cache/
 backend/telethon/data/
 backend/telethon/.venv/
+backend/qnola-api/data/
+backend/qnola-api/.venv/
+data/
 *.session
 build-system/codesigning/
 *.ipa
