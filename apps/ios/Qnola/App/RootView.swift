@@ -19,6 +19,7 @@ struct RootView: View {
         } message: {
             Text(store.lastError ?? "")
         }
+        .preferredColorScheme(.dark)
     }
 }
 
@@ -30,6 +31,6 @@ struct MainShellView: View {
             SettingsView()
                 .tabItem { Label("qnola", systemImage: "slider.horizontal.3") }
         }
-        .tint(.primary)
+        .tint(.telegramBlue)
     }
 }

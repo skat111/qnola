@@ -3,6 +3,7 @@ import SwiftUI
 struct DialogsView: View {
     @EnvironmentObject private var store: SessionStore
     @State private var query = ""
+    @State private var path: [DialogItem] = []
 
     private var visibleDialogs: [DialogItem] {
         let source = store.dialogs
@@ -11,22 +12,24 @@ struct DialogsView: View {
     }
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             ZStack {
-                Color(.systemGroupedBackground)
+                Color.black
                     .ignoresSafeArea()
 
                 List(visibleDialogs) { dialog in
-                    NavigationLink {
-                        ChatView(dialog: dialog)
+                    Button {
+                        path.append(dialog)
                     } label: {
                         DialogRow(dialog: dialog)
                     }
+                    .buttonStyle(.plain)
                     .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 12))
                     .listRowSeparator(.visible)
-                    .listRowBackground(Color(.systemBackground))
+                    .listRowBackground(Color.black)
                 }
                 .listStyle(.plain)
+                .scrollContentBackground(.hidden)
                 .overlay {
                     if visibleDialogs.isEmpty {
                         ContentUnavailableView("No chats", systemImage: "bubble.left.and.bubble.right")
@@ -57,6 +60,9 @@ struct DialogsView: View {
             .task {
                 await store.refreshDialogs()
             }
+            .navigationDestination(for: DialogItem.self) { dialog in
+                ChatView(dialog: dialog)
+            }
         }
     }
 }
@@ -73,7 +79,7 @@ struct DialogRow: View {
                 HStack(spacing: 8) {
                     Text(store.streamerMode ? "Hidden Chat" : dialog.title)
                         .font(.system(size: 17, weight: .semibold))
-                        .foregroundStyle(.primary)
+                        .foregroundStyle(.white)
                         .lineLimit(1)
 
                     if dialog.isMuted {
@@ -92,7 +98,7 @@ struct DialogRow: View {
                 HStack(spacing: 8) {
                     Text(store.streamerMode ? "Preview hidden" : (dialog.lastMessage ?? "No messages yet"))
                         .font(.system(size: 15))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.white.opacity(0.52))
                         .lineLimit(1)
 
                     Spacer(minLength: 8)
@@ -169,4 +175,5 @@ struct AvatarView: View {
 
 extension Color {
     static let telegramBlue = Color(red: 0.0, green: 0.53, blue: 0.86)
+    static let qnolaChrome = Color(red: 0.095, green: 0.095, blue: 0.10)
 }

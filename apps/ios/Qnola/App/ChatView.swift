@@ -11,6 +11,11 @@ struct ChatView: View {
             ChatBackground()
 
             VStack(spacing: 0) {
+                ChatHeader(dialog: dialog)
+                    .padding(.horizontal, 14)
+                    .padding(.top, 4)
+                    .padding(.bottom, 10)
+
                 ScrollViewReader { proxy in
                     ScrollView {
                         LazyVStack(spacing: 6) {
@@ -45,15 +50,12 @@ struct ChatView: View {
                 ChatComposer(draft: $draft, isFocused: $isComposerFocused) {
                     sendDraft()
                 }
+                .padding(.horizontal, 10)
+                .padding(.bottom, 6)
             }
         }
-        .navigationTitle("")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .principal) {
-                ChatTitleView(dialog: dialog)
-            }
-        }
+        .toolbar(.hidden, for: .navigationBar)
+        .toolbar(.hidden, for: .tabBar)
         .task {
             await store.loadMessages(for: dialog)
         }
@@ -97,27 +99,57 @@ private struct MessageDayGroup: Identifiable {
     }
 }
 
-struct ChatTitleView: View {
+struct ChatHeader: View {
     @EnvironmentObject private var store: SessionStore
+    @Environment(\.dismiss) private var dismiss
     let dialog: DialogItem
 
     var body: some View {
-        HStack(spacing: 9) {
-            AvatarView(title: title, id: dialog.id)
-                .frame(width: 34, height: 34)
-                .scaleEffect(34.0 / 52.0)
-                .frame(width: 34, height: 34)
-
-            VStack(alignment: .leading, spacing: 1) {
-                Text(title)
-                    .font(.system(size: 16, weight: .semibold))
-                    .lineLimit(1)
-                Text("online")
-                    .font(.system(size: 12))
-                    .foregroundStyle(Color.telegramBlue)
+        HStack(alignment: .center, spacing: 12) {
+            Button {
+                dismiss()
+            } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 24, weight: .semibold))
+                    Text("4")
+                        .font(.system(size: 18, weight: .bold))
+                        .frame(width: 28, height: 28)
+                        .background(.white, in: Circle())
+                        .foregroundStyle(.black)
+                }
+                .padding(.leading, 12)
+                .padding(.trailing, 14)
+                .frame(height: 58)
+                .background(Color.qnolaChrome, in: Capsule())
+                .overlay(Capsule().stroke(Color.white.opacity(0.08), lineWidth: 1))
             }
+            .buttonStyle(.plain)
+
+            Spacer(minLength: 0)
+
+            VStack(spacing: 2) {
+                Text(title)
+                    .font(.system(size: 20, weight: .bold))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                Text(dialog.id == 1 ? "saved messages" : "был(а) вчера в 21:01")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.46))
+                    .lineLimit(1)
+            }
+            .padding(.horizontal, 28)
+            .frame(height: 58)
+            .background(Color.qnolaChrome, in: Capsule())
+            .overlay(Capsule().stroke(Color.white.opacity(0.08), lineWidth: 1))
+
+            Spacer(minLength: 0)
+
+            AvatarView(title: title, id: dialog.id)
+                .frame(width: 58, height: 58)
+                .clipShape(Circle())
+                .overlay(Circle().stroke(Color.telegramBlue.opacity(0.75), lineWidth: 2))
         }
-        .frame(maxWidth: 220, alignment: .leading)
     }
 
     private var title: String {
@@ -144,13 +176,13 @@ struct MessageBubble: View {
 
                 Text(store.streamerMode ? "Message hidden" : message.text)
                     .font(.system(size: 16))
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(.white)
                     .fixedSize(horizontal: false, vertical: true)
 
                 HStack(spacing: 4) {
                     Text(message.date.chatTime)
                         .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.white.opacity(0.55))
 
                     if message.outgoing {
                         Image(systemName: "checkmark")
@@ -196,8 +228,9 @@ struct MessageBubbleSurface: ViewModifier {
             #endif
         } else {
             content
-                .background(outgoing ? Color(red: 0.83, green: 0.94, blue: 0.76) : Color(.systemBackground), in: shape)
-                .shadow(color: .black.opacity(0.05), radius: 1, y: 1)
+                .background(outgoing ? Color.telegramBlue.opacity(0.85) : Color.qnolaChrome, in: shape)
+                .overlay(shape.stroke(Color.white.opacity(outgoing ? 0.08 : 0.06), lineWidth: 1))
+                .shadow(color: .black.opacity(0.22), radius: 10, y: 4)
         }
     }
 
@@ -243,37 +276,51 @@ struct ChatComposer: View {
         HStack(alignment: .bottom, spacing: 8) {
             Button {} label: {
                 Image(systemName: "paperclip")
-                    .font(.system(size: 20))
-                    .frame(width: 34, height: 34)
+                    .font(.system(size: 28, weight: .semibold))
+                    .frame(width: 58, height: 58)
+                    .background(Color.qnolaChrome, in: Circle())
             }
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.white.opacity(0.86))
             .disabled(true)
 
-            TextField("Message", text: $draft, axis: .vertical)
-                .font(.system(size: 16))
-                .lineLimit(1...5)
-                .padding(.horizontal, 13)
-                .padding(.vertical, 8)
-                .background(Color(.systemBackground), in: Capsule())
-                .overlay {
-                    Capsule().stroke(Color(.separator).opacity(0.35), lineWidth: 0.5)
+            HStack(alignment: .bottom, spacing: 10) {
+                TextField("Сообщение", text: $draft, axis: .vertical)
+                    .font(.system(size: 18, weight: .semibold))
+                    .lineLimit(1...4)
+                    .padding(.leading, 18)
+                    .padding(.vertical, 17)
+                    .foregroundStyle(.white)
+                    .focused(isFocused)
+
+                Button {} label: {
+                    Image(systemName: "gift")
+                        .font(.system(size: 25, weight: .semibold))
                 }
-                .focused(isFocused)
+                .disabled(true)
+
+                Button {} label: {
+                    Image(systemName: "moon")
+                        .font(.system(size: 25, weight: .semibold))
+                }
+                .disabled(true)
+            }
+            .foregroundStyle(.white.opacity(0.58))
+            .frame(minHeight: 58)
+            .padding(.trailing, 16)
+            .background(Color.qnolaChrome, in: Capsule())
+            .overlay(Capsule().stroke(Color.white.opacity(0.08), lineWidth: 1))
 
             Button(action: onSend) {
                 Image(systemName: draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "mic.fill" : "paperplane.fill")
-                    .font(.system(size: 17, weight: .semibold))
-                    .frame(width: 36, height: 36)
-                    .background(Color.telegramBlue, in: Circle())
+                    .font(.system(size: 29, weight: .semibold))
+                    .frame(width: 58, height: 58)
+                    .background(Color.qnolaChrome, in: Circle())
                     .foregroundStyle(.white)
             }
             .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-            .opacity(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0.65 : 1)
+            .opacity(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0.9 : 1)
         }
-        .padding(.horizontal, 8)
-        .padding(.top, 7)
-        .padding(.bottom, 7)
-        .background(.bar)
+        .padding(.top, 8)
     }
 }
 
@@ -293,21 +340,7 @@ struct MessageDayHeader: View {
 
 struct ChatBackground: View {
     var body: some View {
-        Color(red: 0.89, green: 0.93, blue: 0.86)
-            .overlay {
-                GeometryReader { geometry in
-                    Canvas { context, size in
-                        let spacing: CGFloat = 34
-                        for x in stride(from: CGFloat(0), through: size.width + spacing, by: spacing) {
-                            for y in stride(from: CGFloat(0), through: size.height + spacing, by: spacing) {
-                                let rect = CGRect(x: x, y: y, width: 2, height: 2)
-                                context.fill(Path(ellipseIn: rect), with: .color(.white.opacity(0.28)))
-                            }
-                        }
-                    }
-                    .frame(width: geometry.size.width, height: geometry.size.height)
-                }
-            }
+        Color.black
             .ignoresSafeArea()
     }
 }
