@@ -2,6 +2,7 @@ import SwiftUI
 import UIKit
 import UserNotifications
 
+@MainActor
 final class PushNotificationDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
     func application(
         _ application: UIApplication,
@@ -32,7 +33,7 @@ final class PushNotificationDelegate: NSObject, UIApplicationDelegate, UNUserNot
     private func requestPermission() {
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .badge, .sound]) { granted, _ in
             guard granted else { return }
-            DispatchQueue.main.async {
+            Task { @MainActor in
                 UIApplication.shared.registerForRemoteNotifications()
             }
         }
