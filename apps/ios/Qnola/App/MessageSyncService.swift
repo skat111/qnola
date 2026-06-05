@@ -11,13 +11,14 @@ final class MessageSyncService: ObservableObject {
         self.client = client
     }
 
-    func connect(onEvent: @escaping (RealtimeEvent) -> Void) {
+    func connect(onEvent: @escaping @Sendable (RealtimeEvent) -> Void) {
         guard let token = client.accessToken else { return }
-        var components = URLComponents(url: client.baseURL, resolvingAgainstBaseURL: false)
-        components?.scheme = components?.scheme == "https" ? "wss" : "ws"
-        components?.path = "/v1/realtime"
-        components?.queryItems = [URLQueryItem(name: "token", value: token)]
-        guard let url = components?.url else { return }
+        guard var components = URLComponents(url: client.baseURL, resolvingAgainstBaseURL: false) else { return }
+        let currentScheme = components.scheme
+        components.scheme = currentScheme == "https" ? "wss" : "ws"
+        components.path = "/v1/realtime"
+        components.queryItems = [URLQueryItem(name: "token", value: token)]
+        guard let url = components.url else { return }
         let task = URLSession.shared.webSocketTask(with: url)
         self.task = task
         task.resume()
@@ -39,7 +40,7 @@ final class MessageSyncService: ObservableObject {
         send(["type": "read", "chatId": chatId])
     }
 
-    private func receive(onEvent: @escaping (RealtimeEvent) -> Void) {
+    private func receive(onEvent: @escaping @Sendable (RealtimeEvent) -> Void) {
         task?.receive { [weak self] result in
             Task { @MainActor in
                 guard let self else { return }
