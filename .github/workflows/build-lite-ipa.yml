@@ -1,0 +1,71 @@
+name: Build Qnola IPA
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-26
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo xcode-select -s /Applications/Xcode_26.2.0.app || \
+            sudo xcode-select -s /Applications/Xcode_26.2.app || \
+            sudo xcode-select -s /Applications/Xcode.app
+          xcodebuild -version
+
+      - name: Install XcodeGen
+        shell: bash
+        run: brew install xcodegen
+
+      - name: Generate project
+        shell: bash
+        working-directory: apps/ios
+        run: xcodegen generate --spec project.yml
+
+      - name: Build unsigned app
+        shell: bash
+        working-directory: apps/ios
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -project Qnola.xcodeproj \
+            -scheme Qnola \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath ../../build/QnolaDerivedData \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            build
+
+      - name: Package IPA
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP_PATH="$(find build/QnolaDerivedData/Build/Products/Release-iphoneos -name 'Qnola.app' -type d | head -n 1)"
+          test -n "${APP_PATH}"
+          rm -rf build/QnolaPayload build/Qnola.ipa
+          mkdir -p build/QnolaPayload/Payload
+          ditto "${APP_PATH}" build/QnolaPayload/Payload/Qnola.app
+          cd build/QnolaPayload
+          zip -qry ../Qnola.ipa Payload
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: qnola-ipa
+          path: build/Qnola.ipa
+          if-no-files-found: error
+          retention-days: 14
+

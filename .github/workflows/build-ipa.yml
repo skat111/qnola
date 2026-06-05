@@ -1,0 +1,203 @@
+name: Build Qnola IPA
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      telegram_ref:
+        description: "Telegram-iOS ref to build"
+        required: false
+        default: "master"
+      build_number:
+        description: "Build number override"
+        required: false
+        default: ""
+      build_mode:
+        description: "unsigned builds simulator artifact; signed builds installable IPA"
+        required: false
+        default: "unsigned"
+        type: choice
+        options:
+          - unsigned
+          - signed
+
+jobs:
+  build:
+    runs-on: macos-26
+    timeout-minutes: 180
+
+    steps:
+      - name: Checkout Qnola
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo xcode-select -s /Applications/Xcode_26.2.0.app || \
+            sudo xcode-select -s /Applications/Xcode_26.2.app || \
+            sudo xcode-select -s /Applications/Xcode.app
+          xcodebuild -version
+
+      - name: Validate CI inputs
+        shell: bash
+        env:
+          BUILD_MODE: ${{ github.event.inputs.build_mode || 'unsigned' }}
+          TELEGRAM_IOS_BUILD_CONFIG_BASE64: ${{ secrets.TELEGRAM_IOS_BUILD_CONFIG_BASE64 }}
+          TELEGRAM_IOS_CODESIGNING_TAR_BASE64: ${{ secrets.TELEGRAM_IOS_CODESIGNING_TAR_BASE64 }}
+        run: bash scripts/validate-ci-inputs.sh
+
+      - name: Checkout Telegram iOS
+        shell: bash
+        env:
+          TELEGRAM_REF: ${{ github.event.inputs.telegram_ref || 'master' }}
+        run: |
+          set -euo pipefail
+          git clone --recursive -j8 --branch "${TELEGRAM_REF}" \
+            https://github.com/TelegramMessenger/Telegram-iOS.git telegram-ios-src
+
+      - name: Apply Qnola patches
+        shell: bash
+        working-directory: telegram-ios-src
+        run: bash ../scripts/apply-patches.sh ../patches
+
+      - name: Patch Telegram unsigned build behavior
+        shell: bash
+        working-directory: telegram-ios-src
+        env:
+          BUILD_MODE: ${{ github.event.inputs.build_mode || 'unsigned' }}
+        run: bash ../scripts/patch-telegram-unsigned-build.sh
+
+      - name: Restore Telegram iOS build config
+        shell: bash
+        env:
+          TELEGRAM_IOS_BUILD_CONFIG_BASE64: ${{ secrets.TELEGRAM_IOS_BUILD_CONFIG_BASE64 }}
+        run: python3 scripts/restore-build-config.py telegram-ios-src/build-system/ci-configuration.json
+
+      - name: Restore code signing data
+        if: ${{ (github.event.inputs.build_mode || 'unsigned') == 'signed' }}
+        shell: bash
+        env:
+          TELEGRAM_IOS_CODESIGNING_TAR_BASE64: ${{ secrets.TELEGRAM_IOS_CODESIGNING_TAR_BASE64 }}
+        run: |
+          set -euo pipefail
+          test -n "${TELEGRAM_IOS_CODESIGNING_TAR_BASE64}"
+          mkdir -p telegram-ios-src/build-system/codesigning
+          echo "${TELEGRAM_IOS_CODESIGNING_TAR_BASE64}" | base64 --decode | tar -xzf - -C telegram-ios-src/build-system/codesigning
+
+      - name: Apply Qnola branding
+        shell: bash
+        working-directory: telegram-ios-src
+        run: bash ../scripts/rebrand-telegram-ios.sh
+
+      - name: Apply Qnola safe feature defaults
+        shell: bash
+        working-directory: telegram-ios-src
+        run: bash ../scripts/apply-safe-features.sh
+
+      - name: Apply Qnola Liquid Glass customization
+        shell: bash
+        working-directory: telegram-ios-src
+        run: bash ../scripts/apply-liquid-glass-customization.sh
+
+      - name: Build Qnola
+        shell: bash
+        working-directory: telegram-ios-src
+        env:
+          INPUT_BUILD_NUMBER: ${{ github.event.inputs.build_number || '' }}
+          BUILD_MODE: ${{ github.event.inputs.build_mode || 'unsigned' }}
+        run: |
+          set -euo pipefail
+          BUILD_NUMBER="${INPUT_BUILD_NUMBER}"
+          if [[ -z "${BUILD_NUMBER}" ]]; then
+            BUILD_NUMBER="${GITHUB_RUN_NUMBER}"
+          fi
+          mkdir -p ../build-artifacts
+          if [[ "${BUILD_MODE}" == "signed" ]]; then
+            python3 build-system/Make/Make.py \
+              --cacheDir="$HOME/telegram-bazel-cache" \
+              build \
+              --configurationPath=build-system/ci-configuration.json \
+              --codesigningInformationPath=build-system/codesigning \
+              --buildNumber="${BUILD_NUMBER}" \
+              --configuration=release_arm64 \
+              --outputBuildArtifactsPath="../build-artifacts"
+          else
+            python3 build-system/Make/Make.py \
+              --cacheDir="$HOME/telegram-bazel-cache" \
+              build \
+              --configurationPath=build-system/ci-configuration.json \
+              --xcodeManagedCodesigning \
+              --buildNumber="${BUILD_NUMBER}" \
+              --configuration=release_sim_arm64
+          fi
+
+      - name: Locate IPA
+        id: ipa
+        if: ${{ (github.event.inputs.build_mode || 'unsigned') == 'signed' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          IPA_PATH="$(find build-artifacts telegram-ios-src -name '*.ipa' -type f | head -n 1)"
+          test -n "${IPA_PATH}"
+          echo "path=${IPA_PATH}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload IPA artifact
+        if: ${{ (github.event.inputs.build_mode || 'unsigned') == 'signed' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: qnola-ipa
+          path: ${{ steps.ipa.outputs.path }}
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Package unsigned simulator app
+        if: ${{ (github.event.inputs.build_mode || 'unsigned') == 'unsigned' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build-artifacts
+          echo "Searching for built .app bundles..."
+          find telegram-ios-src \
+            \( -path '*/bazel-bin/*' -o -path '*/bazel-out/*' -o -path '*/build-artifacts/*' \) \
+            -type d -name '*.app' -print | tee build-artifacts/app-candidates.txt
+          APP_PATH="$(head -n 1 build-artifacts/app-candidates.txt || true)"
+          if [[ -n "${APP_PATH}" ]]; then
+            ditto -c -k --sequesterRsrc --keepParent "${APP_PATH}" build-artifacts/qnola-simulator-app.zip
+          elif [[ -d telegram-ios-src/bazel-bin/Telegram ]]; then
+            echo "::warning::No .app bundle found; uploading bazel-bin/Telegram for inspection."
+            ditto -c -k --sequesterRsrc --keepParent telegram-ios-src/bazel-bin/Telegram build-artifacts/qnola-build-output.zip
+          else
+            echo "::error::No .app bundle or bazel-bin/Telegram output found."
+            find telegram-ios-src -maxdepth 4 -type d \( -name bazel-bin -o -name bazel-out \) -print
+            exit 1
+          fi
+
+      - name: Upload unsigned simulator artifact
+        if: ${{ (github.event.inputs.build_mode || 'unsigned') == 'unsigned' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: qnola-simulator-app
+          path: |
+            build-artifacts/qnola-simulator-app.zip
+            build-artifacts/qnola-build-output.zip
+            build-artifacts/app-candidates.txt
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Build summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "## Qnola build"
+            echo
+            echo "- Commit: \`${GITHUB_SHA}\`"
+            echo "- Runner: \`${RUNNER_OS}\`"
+            echo "- Telegram ref: \`${{ github.event.inputs.telegram_ref || 'master' }}\`"
+            echo "- Build mode: \`${{ github.event.inputs.build_mode || 'unsigned' }}\`"
+            echo "- Branding: Qnola"
+            echo "- Icon: black-white generated icon"
+          } >> "$GITHUB_STEP_SUMMARY"
