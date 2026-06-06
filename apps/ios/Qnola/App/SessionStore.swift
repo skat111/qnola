@@ -66,6 +66,7 @@ final class SessionStore: ObservableObject {
 
     init() {
         let savedURL = UserDefaults.standard.string(forKey: "backendURLString") ?? "http://127.0.0.1:8000"
+        let initialDemoMode = UserDefaults.standard.object(forKey: "demoMode") as? Bool ?? true
         let savedName = UserDefaults.standard.string(forKey: "profileName") ?? "Алекс"
         self.profileName = savedName
         self.profileUsername = UserDefaults.standard.string(forKey: "profileUsername") ?? "@alex"
@@ -75,10 +76,10 @@ final class SessionStore: ObservableObject {
         self.client = APIClient(baseURL: URL(string: savedURL) ?? URL(string: "http://127.0.0.1:8000")!)
 
         let expectedAuthorized = UserDefaults.standard.bool(forKey: "telegramExpectedAuthorized")
-        self.authState = AuthState(authorized: demoMode || expectedAuthorized, phone: nil, userDisplayName: savedName)
+        self.authState = AuthState(authorized: initialDemoMode || expectedAuthorized, phone: nil, userDisplayName: savedName)
 
         seedDemoData()
-        if demoMode {
+        if initialDemoMode {
             enterDemoMode()
         }
     }
