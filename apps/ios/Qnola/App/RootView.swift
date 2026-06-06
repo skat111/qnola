@@ -5,7 +5,9 @@ struct RootView: View {
 
     var body: some View {
         Group {
-            if store.authState.authorized {
+            if store.isCheckingSession {
+                LaunchLoadingView()
+            } else if store.authState.authorized {
                 MainShellView()
             } else {
                 LoginView()
@@ -20,6 +22,17 @@ struct RootView: View {
             Text(store.lastError ?? "")
         }
         .preferredColorScheme(.dark)
+    }
+}
+
+struct LaunchLoadingView: View {
+    var body: some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+            ProgressView()
+                .tint(.white)
+                .scaleEffect(1.1)
+        }
     }
 }
 

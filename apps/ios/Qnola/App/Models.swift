@@ -4,6 +4,11 @@ enum MessageKind: String, Codable, Hashable {
     case text
     case photo
     case file
+    case sticker
+    case video
+    case audio
+    case voice
+    case unsupported
 }
 
 enum MessageStatus: String, Codable, Hashable {
@@ -126,6 +131,35 @@ struct MessageItem: Codable, Identifiable, Hashable {
     let text: String
     let date: Date
     let outgoing: Bool
+    let kind: MessageKind
+    let mediaUrl: String?
+    let fileName: String?
+    let mimeType: String?
+    let thumbnailUrl: String?
+
+    init(
+        id: Int64,
+        senderName: String?,
+        text: String,
+        date: Date,
+        outgoing: Bool,
+        kind: MessageKind = .text,
+        mediaUrl: String? = nil,
+        fileName: String? = nil,
+        mimeType: String? = nil,
+        thumbnailUrl: String? = nil
+    ) {
+        self.id = id
+        self.senderName = senderName
+        self.text = text
+        self.date = date
+        self.outgoing = outgoing
+        self.kind = kind
+        self.mediaUrl = mediaUrl
+        self.fileName = fileName
+        self.mimeType = mimeType
+        self.thumbnailUrl = thumbnailUrl
+    }
 }
 
 struct SendMessageRequest: Codable {
@@ -234,6 +268,11 @@ struct TelegramMessage: Codable, Identifiable, Hashable {
     let text: String
     let date: Date
     let outgoing: Bool
+    let kind: MessageKind?
+    let mediaUrl: String?
+    let fileName: String?
+    let mimeType: String?
+    let thumbnailUrl: String?
     let source: String?
 }
 

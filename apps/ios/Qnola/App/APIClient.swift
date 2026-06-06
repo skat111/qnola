@@ -119,6 +119,10 @@ final class APIClient {
         try await post("/v1/telegram/verify-code", body: TelegramVerifyCodeRequest(phone: phone, code: code, password: password))
     }
 
+    func telegramRegisterPushToken(_ token: String, platform: String = "ios") async throws {
+        let _: EmptyResponse = try await post("/v1/telegram/push-token", body: PushTokenRequest(token: token, platform: platform))
+    }
+
     func telegramDialogs() async throws -> [DialogItem] {
         let items: [TelegramDialog] = try await get("/v1/telegram/dialogs")
         return items.map { dialog in
@@ -136,13 +140,56 @@ final class APIClient {
     func telegramMessages(chatId: Int64) async throws -> [MessageItem] {
         let items: [TelegramMessage] = try await get("/v1/telegram/dialogs/\(chatId)/messages")
         return items.map {
-            MessageItem(id: $0.id, senderName: $0.senderName, text: $0.text, date: $0.date, outgoing: $0.outgoing)
+            MessageItem(
+                id: $0.id,
+                senderName: $0.senderName,
+                text: $0.text,
+                date: $0.date,
+                outgoing: $0.outgoing,
+                kind: $0.kind ?? .text,
+                mediaUrl: absoluteURLString($0.mediaUrl),
+                fileName: $0.fileName,
+                mimeType: $0.mimeType,
+                thumbnailUrl: absoluteURLString($0.thumbnailUrl)
+            )
         }
     }
 
     func telegramSendMessage(chatId: Int64, text: String) async throws -> MessageItem {
         let sent: TelegramMessage = try await post("/v1/telegram/dialogs/\(chatId)/send", body: TelegramSendTextRequest(text: text))
-        return MessageItem(id: sent.id, senderName: sent.senderName, text: sent.text, date: sent.date, outgoing: sent.outgoing)
+        return MessageItem(
+            id: sent.id,
+            senderName: sent.senderName,
+            text: sent.text,
+            date: sent.date,
+            outgoing: sent.outgoing,
+            kind: sent.kind ?? .text,
+            mediaUrl: absoluteURLString(sent.mediaUrl),
+            fileName: sent.fileName,
+            mimeType: sent.mimeType,
+            thumbnailUrl: absoluteURLString(sent.thumbnailUrl)
+        )
+    }
+
+    func telegramSendFile(chatId: Int64, fileURL: URL, caption: String?) async throws -> MessageItem {
+        var request = URLRequest(url: makeURL("/v1/telegram/dialogs/\(chatId)/send-file"))
+        request.httpMethod = "POST"
+        let boundary = "Boundary-\(UUID().uuidString)"
+        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try multipartBody(fileURL: fileURL, caption: caption, boundary: boundary)
+        let sent: TelegramMessage = try await perform(request)
+        return MessageItem(
+            id: sent.id,
+            senderName: sent.senderName,
+            text: sent.text,
+            date: sent.date,
+            outgoing: sent.outgoing,
+            kind: sent.kind ?? .file,
+            mediaUrl: absoluteURLString(sent.mediaUrl),
+            fileName: sent.fileName,
+            mimeType: sent.mimeType,
+            thumbnailUrl: absoluteURLString(sent.thumbnailUrl)
+        )
     }
 
     private func get<T: Decodable>(_ path: String) async throws -> T {
@@ -182,6 +229,25 @@ final class APIClient {
         return URL(string: value, relativeTo: baseURL)?.absoluteURL.absoluteString
     }
 
+    private func multipartBody(fileURL: URL, caption: String?, boundary: String) throws -> Data {
+        var body = Data()
+        let data = try Data(contentsOf: fileURL)
+        let fileName = fileURL.lastPathComponent
+        let mimeType = fileURL.mimeType
+        if let caption, !caption.isEmpty {
+            body.append("--\(boundary)\r\n".data(using: .utf8)!)
+            body.append("Content-Disposition: form-data; name=\"caption\"\r\n\r\n".data(using: .utf8)!)
+            body.append(caption.data(using: .utf8)!)
+            body.append("\r\n".data(using: .utf8)!)
+        }
+        body.append("--\(boundary)\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"file\"; filename=\"\(fileName)\"\r\n".data(using: .utf8)!)
+        body.append("Content-Type: \(mimeType)\r\n\r\n".data(using: .utf8)!)
+        body.append(data)
+        body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
+        return body
+    }
+
     private func perform<T: Decodable>(_ request: URLRequest) async throws -> T {
         var request = request
         if let accessToken {
@@ -201,6 +267,25 @@ final class APIClient {
             return EmptyResponse() as! T
         }
         return try decoder.decode(T.self, from: data)
+    }
+}
+
+private extension URL {
+    var mimeType: String {
+        let ext = pathExtension.lowercased()
+        switch ext {
+        case "jpg", "jpeg": return "image/jpeg"
+        case "png": return "image/png"
+        case "gif": return "image/gif"
+        case "webp": return "image/webp"
+        case "mp4", "m4v": return "video/mp4"
+        case "mov": return "video/quicktime"
+        case "mp3": return "audio/mpeg"
+        case "m4a": return "audio/mp4"
+        case "ogg": return "audio/ogg"
+        case "pdf": return "application/pdf"
+        default: return "application/octet-stream"
+        }
     }
 }
 

@@ -6,22 +6,23 @@ struct DialogsView: View {
     @State private var path: [DialogItem] = []
 
     private var visibleDialogs: [DialogItem] {
-        let source = store.dialogs
-        guard !query.isEmpty else { return source }
-        return source.filter { $0.title.localizedCaseInsensitiveContains(query) || ($0.lastMessage ?? "").localizedCaseInsensitiveContains(query) }
+        guard !query.isEmpty else { return store.dialogs }
+        return store.dialogs.filter {
+            $0.title.localizedCaseInsensitiveContains(query) ||
+            ($0.lastMessage ?? "").localizedCaseInsensitiveContains(query)
+        }
     }
 
     var body: some View {
         NavigationStack(path: $path) {
             ZStack {
-                Color.black
-                    .ignoresSafeArea()
+                Color.black.ignoresSafeArea()
 
                 VStack(spacing: 0) {
                     ConnectionStatusBar()
-                        .padding(.horizontal, 12)
-                        .padding(.top, 6)
-                        .padding(.bottom, 4)
+                        .padding(.horizontal, 14)
+                        .padding(.top, 2)
+                        .padding(.bottom, 2)
 
                     List(visibleDialogs) { dialog in
                         Button {
@@ -39,12 +40,13 @@ struct DialogsView: View {
                     .overlay {
                         if visibleDialogs.isEmpty {
                             ContentUnavailableView("Нет чатов", systemImage: "bubble.left.and.bubble.right")
+                                .foregroundStyle(.white.opacity(0.7))
                         }
                     }
                 }
             }
             .navigationTitle("Чаты")
-            .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always))
+            .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: "Поиск")
             .tint(.telegramBlue)
             .refreshable {
                 await store.refreshDialogs()
@@ -58,17 +60,19 @@ struct DialogsView: View {
                     Button {
                         Task { await store.refreshDialogs() }
                     } label: {
-                        Image(systemName: "square.and.pencil")
-                            .font(.system(size: 17, weight: .semibold))
+                        Image(systemName: "arrow.clockwise")
+                            .font(.system(size: 16, weight: .semibold))
                     }
-                    .accessibilityLabel("Новый чат")
+                    .accessibilityLabel("Обновить")
                 }
             }
             .task {
                 await store.refreshDialogs()
                 while !Task.isCancelled {
                     try? await Task.sleep(nanoseconds: 10_000_000_000)
-                    await store.refreshDialogs()
+                    if !Task.isCancelled {
+                        await store.refreshDialogs()
+                    }
                 }
             }
             .navigationDestination(for: DialogItem.self) { dialog in
@@ -135,80 +139,72 @@ struct ConnectionStatusBar: View {
     @EnvironmentObject private var store: SessionStore
 
     var body: some View {
-        HStack(spacing: 10) {
-            Circle()
-                .fill(statusColor)
-                .frame(width: 8, height: 8)
-
-            VStack(alignment: .leading, spacing: 1) {
-                Text(store.connectionStatus)
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(.white)
-                Text(store.connectionSubtitle)
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.55))
+        HStack(spacing: 8) {
+            ZStack {
+                Circle()
+                    .fill(statusColor.opacity(0.16))
+                    .frame(width: 24, height: 24)
+                if store.isLoading {
+                    ProgressView()
+                        .controlSize(.mini)
+                        .tint(.white)
+                } else {
+                    Image(systemName: store.isConnected ? "checkmark" : "exclamationmark")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(statusColor)
+                }
             }
 
-            Spacer()
+            Text(store.connectionStatus)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(.white)
 
-            if store.isLoading {
-                ProgressView()
-                    .controlSize(.small)
-                    .tint(.white.opacity(0.7))
-            }
+            Text(store.connectionSubtitle)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(.white.opacity(0.48))
+
+            Spacer(minLength: 0)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .frame(height: 36)
         .modifier(LiquidGlassCapsule())
     }
 
     private var statusColor: Color {
-        store.connectionStatus == "Нет подключения" ? .red : .green
+        store.isConnected ? .green : .orange
     }
 }
 
 struct AvatarView: View {
+    @StateObject private var cache = MediaCache.shared
     let title: String
     let id: Int64
     var avatarUrl: String? = nil
 
     var body: some View {
         Circle()
-            .fill(
-                LinearGradient(
-                    colors: avatarColors,
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-            )
+            .fill(avatarGradient)
             .frame(width: 52, height: 52)
             .overlay {
-                if let avatarUrl, let url = URL(string: avatarUrl) {
-                    AsyncImage(url: url) { phase in
-                        switch phase {
-                        case let .success(image):
-                            image
-                                .resizable()
-                                .scaledToFill()
-                        default:
-                            placeholder
-                        }
-                    }
-                    .clipShape(Circle())
-                } else if id == 1 {
+                if id == 1 {
                     Image(systemName: "bookmark.fill")
-                        .font(.system(size: 21, weight: .semibold))
+                        .font(.system(size: 20, weight: .semibold))
                         .foregroundStyle(.white)
+                } else if let image = cache.image(for: avatarUrl) {
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFill()
+                        .clipShape(Circle())
                 } else {
-                    placeholder
+                    Text(initials)
+                        .font(.system(.title3, design: .rounded, weight: .semibold))
+                        .foregroundStyle(.white)
                 }
             }
-    }
-
-    private var placeholder: some View {
-        Text(initials)
-            .font(.system(size: 19, weight: .semibold))
-            .foregroundStyle(.white)
+            .task(id: avatarUrl) {
+                await cache.loadImage(avatarUrl)
+            }
     }
 
     private var initials: String {
@@ -219,7 +215,11 @@ struct AvatarView: View {
             .map(String.init)
             .joined()
             .uppercased()
-        return value.isEmpty ? "M" : value
+        return value.isEmpty ? "Q" : value
+    }
+
+    private var avatarGradient: LinearGradient {
+        LinearGradient(colors: avatarColors, startPoint: .topLeading, endPoint: .bottomTrailing)
     }
 
     private var avatarColors: [Color] {
@@ -231,7 +231,8 @@ struct AvatarView: View {
             [.green, .teal],
             [.orange, .red],
             [.pink, .purple],
-            [.indigo, .blue]
+            [.indigo, .blue],
+            [.mint, .cyan]
         ]
         return palettes[Int(abs(id)) % palettes.count]
     }

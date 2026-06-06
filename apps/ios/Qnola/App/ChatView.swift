@@ -1,9 +1,13 @@
+import PhotosUI
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct ChatView: View {
     @EnvironmentObject private var store: SessionStore
     let dialog: DialogItem
     @State private var draft = ""
+    @State private var photoItem: PhotosPickerItem?
+    @State private var showFileImporter = false
     @FocusState private var isComposerFocused: Bool
 
     var body: some View {
@@ -21,7 +25,6 @@ struct ChatView: View {
                         LazyVStack(spacing: 6) {
                             ForEach(groupedMessages) { group in
                                 MessageDayHeader(title: group.title)
-
                                 ForEach(group.messages) { message in
                                     MessageBubble(message: message)
                                         .id(message.id)
@@ -34,20 +37,19 @@ struct ChatView: View {
                     }
                     .scrollDismissesKeyboard(.interactively)
                     .onChange(of: store.messages.count) {
-                        if let last = store.messages.last {
-                            withAnimation(.easeOut(duration: 0.2)) {
-                                proxy.scrollTo(last.id, anchor: .bottom)
-                            }
-                        }
+                        scrollToBottom(proxy)
                     }
                     .onAppear {
-                        if let last = store.messages.last {
-                            proxy.scrollTo(last.id, anchor: .bottom)
-                        }
+                        scrollToBottom(proxy, animated: false)
                     }
                 }
 
-                ChatComposer(draft: $draft, isFocused: $isComposerFocused) {
+                ChatComposer(
+                    draft: $draft,
+                    photoItem: $photoItem,
+                    showFileImporter: $showFileImporter,
+                    isFocused: $isComposerFocused
+                ) {
                     sendDraft()
                 }
                 .padding(.horizontal, 8)
@@ -56,21 +58,41 @@ struct ChatView: View {
         }
         .toolbar(.hidden, for: .navigationBar)
         .toolbar(.hidden, for: .tabBar)
-        .task {
+        .task(id: dialog.id) {
             await store.loadMessages(for: dialog)
+        }
+        .onChange(of: photoItem) {
+            guard let photoItem else { return }
+            Task {
+                await sendPhoto(photoItem)
+                self.photoItem = nil
+            }
+        }
+        .fileImporter(isPresented: $showFileImporter, allowedContentTypes: [.item], allowsMultipleSelection: false) { result in
+            guard case let .success(urls) = result, let url = urls.first else { return }
+            Task {
+                await sendFile(url)
+            }
         }
     }
 
     private var groupedMessages: [MessageDayGroup] {
         let calendar = Calendar.current
-        let groups = Dictionary(grouping: store.messages) { message in
-            calendar.startOfDay(for: message.date)
-        }
-        return groups
-            .map { key, value in
-                MessageDayGroup(date: key, messages: value.sorted { $0.date < $1.date })
-            }
+        return Dictionary(grouping: store.messages) { calendar.startOfDay(for: $0.date) }
+            .map { MessageDayGroup(date: $0.key, messages: $0.value.sorted { $0.date < $1.date }) }
             .sorted { $0.date < $1.date }
+    }
+
+    private func scrollToBottom(_ proxy: ScrollViewProxy, animated: Bool = true) {
+        guard let last = store.messages.last else { return }
+        let action = { proxy.scrollTo(last.id, anchor: .bottom) }
+        if animated {
+            withAnimation(.easeOut(duration: 0.2)) {
+                action()
+            }
+        } else {
+            action()
+        }
     }
 
     private func sendDraft() {
@@ -78,9 +100,31 @@ struct ChatView: View {
         guard !text.isEmpty else { return }
         draft = ""
         Task {
-            await store.loadMessages(for: dialog)
             await store.sendMessage(text)
         }
+    }
+
+    private func sendPhoto(_ item: PhotosPickerItem) async {
+        guard let data = try? await item.loadTransferable(type: Data.self) else { return }
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("qnola-photo-\(UUID().uuidString)")
+            .appendingPathExtension("jpg")
+        do {
+            try data.write(to: url, options: .atomic)
+            await store.sendAttachment(fileURL: url, caption: draft.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty)
+            draft = ""
+        } catch {
+            store.lastError = error.localizedDescription
+        }
+    }
+
+    private func sendFile(_ url: URL) async {
+        let scoped = url.startAccessingSecurityScopedResource()
+        defer {
+            if scoped { url.stopAccessingSecurityScopedResource() }
+        }
+        await store.sendAttachment(fileURL: url, caption: draft.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty)
+        draft = ""
     }
 }
 
@@ -113,15 +157,15 @@ struct ChatHeader: View {
                 HStack(spacing: 4) {
                     Image(systemName: "chevron.left")
                         .font(.system(size: 20, weight: .medium))
-                    Text("4")
-                        .font(.system(size: 15, weight: .bold))
-                        .frame(width: 23, height: 23)
+                    Text("\(store.dialogs.count)")
+                        .font(.system(size: 14, weight: .bold))
+                        .frame(minWidth: 22, minHeight: 22)
                         .background(.white, in: Circle())
                         .foregroundStyle(.black)
                 }
                 .padding(.leading, 10)
                 .padding(.trailing, 12)
-                .frame(height: 46)
+                .frame(height: 44)
                 .modifier(LiquidGlassCapsule())
             }
             .buttonStyle(.plain)
@@ -130,22 +174,22 @@ struct ChatHeader: View {
 
             VStack(spacing: 2) {
                 Text(title)
-                    .font(.system(size: 18, weight: .bold))
+                    .font(.system(size: 17, weight: .bold))
                     .foregroundStyle(.white)
                     .lineLimit(1)
-                Text(dialog.id == 1 ? "избранные сообщения" : "синхронизируется")
-                    .font(.system(size: 13, weight: .semibold))
+                Text(dialog.id == 1 ? "избранные сообщения" : "синхронизация")
+                    .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(.white.opacity(0.46))
                     .lineLimit(1)
             }
-            .padding(.horizontal, 24)
-            .frame(height: 46)
+            .padding(.horizontal, 18)
+            .frame(height: 44)
             .modifier(LiquidGlassCapsule())
 
             Spacer(minLength: 0)
 
             AvatarView(title: title, id: dialog.id, avatarUrl: store.streamerMode ? nil : dialog.avatarUrl)
-                .frame(width: 46, height: 46)
+                .frame(width: 44, height: 44)
                 .clipShape(Circle())
                 .overlay(Circle().stroke(Color.white.opacity(0.14), lineWidth: 1))
         }
@@ -163,26 +207,22 @@ struct MessageBubble: View {
     var body: some View {
         HStack(alignment: .bottom, spacing: 4) {
             if message.outgoing {
-                Spacer(minLength: 52)
+                Spacer(minLength: 46)
             }
 
-            VStack(alignment: message.outgoing ? .trailing : .leading, spacing: 3) {
+            VStack(alignment: message.outgoing ? .trailing : .leading, spacing: 5) {
                 if !message.outgoing, let sender = message.senderName, !sender.isEmpty {
                     Text(store.streamerMode ? "Скрытый отправитель" : sender)
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(Color.telegramBlue)
                 }
 
-                Text(store.streamerMode ? "Сообщение скрыто" : message.text)
-                    .font(.system(size: 16))
-                    .foregroundStyle(.white)
-                    .fixedSize(horizontal: false, vertical: true)
+                MessageContent(message: message)
 
                 HStack(spacing: 4) {
                     Text(message.date.chatTime)
                         .font(.system(size: 11))
                         .foregroundStyle(.white.opacity(0.55))
-
                     if message.outgoing {
                         Image(systemName: "checkmark")
                             .font(.system(size: 10, weight: .medium))
@@ -190,15 +230,86 @@ struct MessageBubble: View {
                     }
                 }
             }
-            .padding(.horizontal, 12)
+            .padding(.horizontal, 11)
             .padding(.vertical, 7)
             .modifier(MessageBubbleSurface(outgoing: message.outgoing, glass: store.liquidGlassMessages))
-            .frame(maxWidth: 286, alignment: message.outgoing ? .trailing : .leading)
+            .frame(maxWidth: 300, alignment: message.outgoing ? .trailing : .leading)
 
             if !message.outgoing {
-                Spacer(minLength: 52)
+                Spacer(minLength: 46)
             }
         }
+    }
+}
+
+struct MessageContent: View {
+    @EnvironmentObject private var store: SessionStore
+    @StateObject private var cache = MediaCache.shared
+    let message: MessageItem
+
+    var body: some View {
+        VStack(alignment: message.outgoing ? .trailing : .leading, spacing: 6) {
+            switch message.kind {
+            case .photo, .sticker:
+                mediaImage
+            case .video:
+                filePreview(icon: "play.rectangle.fill", title: message.fileName ?? "Видео")
+            case .audio, .voice:
+                filePreview(icon: "waveform.circle.fill", title: message.fileName ?? "Аудио")
+            case .file, .unsupported:
+                filePreview(icon: "doc.fill", title: message.fileName ?? "Файл")
+            case .text:
+                EmptyView()
+            }
+
+            if !message.text.isEmpty {
+                Text(store.streamerMode ? "Сообщение скрыто" : message.text)
+                    .font(.system(size: 16))
+                    .foregroundStyle(.white)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .textSelection(.enabled)
+            }
+        }
+    }
+
+    private var mediaImage: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(.white.opacity(0.08))
+                .frame(width: message.kind == .sticker ? 156 : 238, height: message.kind == .sticker ? 156 : 180)
+            if let image = cache.image(for: message.mediaUrl ?? message.thumbnailUrl) {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: message.kind == .sticker ? 156 : 238, height: message.kind == .sticker ? 156 : 180)
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            } else {
+                ProgressView()
+                    .tint(.white.opacity(0.7))
+            }
+        }
+        .task(id: message.mediaUrl ?? message.thumbnailUrl) {
+            await cache.loadImage(message.mediaUrl ?? message.thumbnailUrl)
+        }
+    }
+
+    private func filePreview(icon: String, title: String) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: icon)
+                .font(.system(size: 24, weight: .semibold))
+                .frame(width: 38, height: 38)
+                .background(.white.opacity(0.12), in: Circle())
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.system(size: 15, weight: .semibold))
+                    .lineLimit(2)
+                Text(message.mimeType ?? "Вложение")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.white.opacity(0.52))
+                    .lineLimit(1)
+            }
+        }
+        .foregroundStyle(.white)
     }
 }
 
@@ -212,8 +323,7 @@ struct MessageBubbleSurface: ViewModifier {
         if glass {
             #if compiler(>=6.2)
             if #available(iOS 26.0, *) {
-                content
-                    .glassEffect(.regular.tint((outgoing ? Color.telegramBlue : Color.white).opacity(0.16)).interactive(), in: shape)
+                content.glassEffect(.regular.tint((outgoing ? Color.telegramBlue : Color.white).opacity(0.16)).interactive(), in: shape)
             } else {
                 fallback(content: content, shape: shape)
             }
@@ -224,7 +334,7 @@ struct MessageBubbleSurface: ViewModifier {
             content
                 .background(outgoing ? Color.telegramBlue.opacity(0.85) : Color.qnolaChrome, in: shape)
                 .overlay(shape.stroke(Color.white.opacity(outgoing ? 0.08 : 0.06), lineWidth: 1))
-                .shadow(color: .black.opacity(0.22), radius: 10, y: 4)
+                .shadow(color: .black.opacity(0.22), radius: 8, y: 3)
         }
     }
 
@@ -239,22 +349,22 @@ struct TelegramBubbleShape: Shape {
     let outgoing: Bool
 
     func path(in rect: CGRect) -> Path {
-        let tail: CGFloat = 6
-        let radius: CGFloat = 18
+        let tail: CGFloat = 5
+        let radius: CGFloat = 17
         let body = outgoing
             ? CGRect(x: rect.minX, y: rect.minY, width: rect.width - tail, height: rect.height)
             : CGRect(x: rect.minX + tail, y: rect.minY, width: rect.width - tail, height: rect.height)
 
         var path = Path(roundedRect: body, cornerRadius: radius)
         if outgoing {
-            path.move(to: CGPoint(x: body.maxX - 8, y: body.maxY - 10))
-            path.addQuadCurve(to: CGPoint(x: rect.maxX, y: body.maxY), control: CGPoint(x: body.maxX + 2, y: body.maxY - 1))
-            path.addLine(to: CGPoint(x: body.maxX - 3, y: body.maxY - 2))
+            path.move(to: CGPoint(x: body.maxX - 7, y: body.maxY - 9))
+            path.addQuadCurve(to: CGPoint(x: rect.maxX - 0.5, y: body.maxY - 1), control: CGPoint(x: body.maxX + 1, y: body.maxY - 2))
+            path.addQuadCurve(to: CGPoint(x: body.maxX - 4, y: body.maxY - 3), control: CGPoint(x: body.maxX + 1, y: body.maxY + 1))
             path.closeSubpath()
         } else {
-            path.move(to: CGPoint(x: body.minX + 8, y: body.maxY - 10))
-            path.addQuadCurve(to: CGPoint(x: rect.minX, y: body.maxY), control: CGPoint(x: body.minX - 2, y: body.maxY - 1))
-            path.addLine(to: CGPoint(x: body.minX + 3, y: body.maxY - 2))
+            path.move(to: CGPoint(x: body.minX + 7, y: body.maxY - 9))
+            path.addQuadCurve(to: CGPoint(x: rect.minX + 0.5, y: body.maxY - 1), control: CGPoint(x: body.minX - 1, y: body.maxY - 2))
+            path.addQuadCurve(to: CGPoint(x: body.minX + 4, y: body.maxY - 3), control: CGPoint(x: body.minX - 1, y: body.maxY + 1))
             path.closeSubpath()
         }
         return path
@@ -263,34 +373,44 @@ struct TelegramBubbleShape: Shape {
 
 struct ChatComposer: View {
     @Binding var draft: String
+    @Binding var photoItem: PhotosPickerItem?
+    @Binding var showFileImporter: Bool
     var isFocused: FocusState<Bool>.Binding
     let onSend: () -> Void
 
     var body: some View {
         HStack(alignment: .bottom, spacing: 8) {
-            Button {} label: {
+            Menu {
+                PhotosPicker(selection: $photoItem, matching: .any(of: [.images, .videos])) {
+                    Label("Фото или видео", systemImage: "photo.on.rectangle")
+                }
+                Button {
+                    showFileImporter = true
+                } label: {
+                    Label("Файл", systemImage: "doc")
+                }
+            } label: {
                 Image(systemName: "paperclip")
-                    .font(.system(size: 22, weight: .regular))
-                    .frame(width: 46, height: 46)
+                    .font(.system(size: 20, weight: .regular))
+                    .frame(width: 44, height: 44)
                     .modifier(LiquidGlassCircle())
             }
             .foregroundStyle(.white.opacity(0.86))
-            .disabled(true)
 
             TextField("Сообщение", text: $draft, axis: .vertical)
                 .font(.system(size: 16, weight: .semibold))
                 .lineLimit(1...4)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 13)
+                .padding(.horizontal, 15)
+                .padding(.vertical, 12)
                 .foregroundStyle(.white)
-                .frame(minHeight: 46)
+                .frame(minHeight: 44)
                 .modifier(LiquidGlassCapsule())
                 .focused(isFocused)
 
             Button(action: onSend) {
                 Image(systemName: draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "mic.fill" : "paperplane.fill")
-                    .font(.system(size: 23, weight: .regular))
-                    .frame(width: 46, height: 46)
+                    .font(.system(size: 21, weight: .regular))
+                    .frame(width: 44, height: 44)
                     .modifier(LiquidGlassCircle())
                     .foregroundStyle(.white)
             }
@@ -305,8 +425,7 @@ struct LiquidGlassCapsule: ViewModifier {
     func body(content: Content) -> some View {
         #if compiler(>=6.2)
         if #available(iOS 26.0, *) {
-            content
-                .glassEffect(.regular.tint(Color.white.opacity(0.10)).interactive(), in: Capsule())
+            content.glassEffect(.regular.tint(Color.white.opacity(0.10)).interactive(), in: Capsule())
         } else {
             fallback(content)
         }
@@ -319,7 +438,7 @@ struct LiquidGlassCapsule: ViewModifier {
         content
             .background(.ultraThinMaterial, in: Capsule())
             .overlay(Capsule().stroke(Color.white.opacity(0.13), lineWidth: 1))
-            .shadow(color: .black.opacity(0.28), radius: 14, y: 6)
+            .shadow(color: .black.opacity(0.24), radius: 12, y: 5)
     }
 }
 
@@ -327,8 +446,7 @@ struct LiquidGlassCircle: ViewModifier {
     func body(content: Content) -> some View {
         #if compiler(>=6.2)
         if #available(iOS 26.0, *) {
-            content
-                .glassEffect(.regular.tint(Color.white.opacity(0.10)).interactive(), in: Circle())
+            content.glassEffect(.regular.tint(Color.white.opacity(0.10)).interactive(), in: Circle())
         } else {
             fallback(content)
         }
@@ -341,7 +459,7 @@ struct LiquidGlassCircle: ViewModifier {
         content
             .background(.ultraThinMaterial, in: Circle())
             .overlay(Circle().stroke(Color.white.opacity(0.13), lineWidth: 1))
-            .shadow(color: .black.opacity(0.28), radius: 14, y: 6)
+            .shadow(color: .black.opacity(0.24), radius: 12, y: 5)
     }
 }
 
@@ -361,8 +479,7 @@ struct MessageDayHeader: View {
 
 struct ChatBackground: View {
     var body: some View {
-        Color.black
-            .ignoresSafeArea()
+        Color.black.ignoresSafeArea()
     }
 }
 
@@ -373,5 +490,11 @@ private extension Date {
         formatter.dateStyle = .none
         formatter.timeStyle = .short
         return formatter.string(from: self)
+    }
+}
+
+private extension String {
+    var nilIfEmpty: String? {
+        isEmpty ? nil : self
     }
 }

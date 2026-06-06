@@ -15,11 +15,7 @@ final class SessionStore: ObservableObject {
             if demoMode {
                 enterDemoMode()
             } else {
-                dialogs = []
-                selectedDialog = nil
-                messages = []
-                authState = AuthState(authorized: false, phone: nil, userDisplayName: nil)
-                connectionStatus = "Не подключено"
+                resetSessionUI()
             }
         }
     }
@@ -28,11 +24,7 @@ final class SessionStore: ObservableObject {
         didSet {
             UserDefaults.standard.set(telegramSyncMode, forKey: "telegramSyncMode")
             if !demoMode {
-                authState = AuthState(authorized: false, phone: nil, userDisplayName: nil)
-                dialogs = []
-                selectedDialog = nil
-                messages = []
-                connectionStatus = "Не подключено"
+                resetSessionUI()
             }
         }
     }
@@ -52,7 +44,8 @@ final class SessionStore: ObservableObject {
         didSet { UserDefaults.standard.set(profileBio, forKey: "profileBio") }
     }
 
-    @Published var authState = AuthState(authorized: false, phone: nil, userDisplayName: nil)
+    @Published var authState: AuthState
+    @Published var isCheckingSession = true
     @Published var dialogs: [DialogItem] = []
     @Published var selectedDialog: DialogItem?
     @Published var messages: [MessageItem] = []
@@ -64,7 +57,7 @@ final class SessionStore: ObservableObject {
     }
     @Published var lastError: String?
     @Published var isLoading = false
-    @Published var connectionStatus = "Демо-режим"
+    @Published var connectionStatus = "Демо"
     @Published var lastSyncedAt: Date?
 
     private var client: APIClient
@@ -73,12 +66,17 @@ final class SessionStore: ObservableObject {
 
     init() {
         let savedURL = UserDefaults.standard.string(forKey: "backendURLString") ?? "http://127.0.0.1:8000"
-        self.profileName = UserDefaults.standard.string(forKey: "profileName") ?? "Алекс"
+        let savedName = UserDefaults.standard.string(forKey: "profileName") ?? "Алекс"
+        self.profileName = savedName
         self.profileUsername = UserDefaults.standard.string(forKey: "profileUsername") ?? "@alex"
         self.profileBio = UserDefaults.standard.string(forKey: "profileBio") ?? "Профиль qnola"
         self.backendURLString = savedURL
         self.liquidGlassMessages = UserDefaults.standard.object(forKey: "liquidGlassMessages") as? Bool ?? false
         self.client = APIClient(baseURL: URL(string: savedURL) ?? URL(string: "http://127.0.0.1:8000")!)
+
+        let expectedAuthorized = UserDefaults.standard.bool(forKey: "telegramExpectedAuthorized")
+        self.authState = AuthState(authorized: demoMode || expectedAuthorized, phone: nil, userDisplayName: savedName)
+
         seedDemoData()
         if demoMode {
             enterDemoMode()
@@ -86,19 +84,28 @@ final class SessionStore: ObservableObject {
     }
 
     var connectionSubtitle: String {
-        guard let lastSyncedAt else { return "Синхронизация еще не выполнялась" }
-        return "Обновлено \(lastSyncedAt.shortTime)"
+        guard let lastSyncedAt else { return "Ожидание синхронизации" }
+        return lastSyncedAt.shortTime
+    }
+
+    var isConnected: Bool {
+        connectionStatus != "Нет сети" && authState.authorized
     }
 
     func refreshAuth() async {
         if demoMode {
             enterDemoMode()
+            isCheckingSession = false
             return
         }
-        await run {
+        await run(showLoading: false) {
             if telegramSyncMode {
                 let state = try await client.telegramState()
                 authState = AuthState(authorized: state.authorized, phone: state.phone, userDisplayName: state.userDisplayName)
+                UserDefaults.standard.set(state.authorized, forKey: "telegramExpectedAuthorized")
+                if state.authorized {
+                    await registerTelegramPushToken()
+                }
                 if !state.enabled {
                     lastError = "Telegram-мост не настроен на backend."
                 }
@@ -106,6 +113,7 @@ final class SessionStore: ObservableObject {
                 authState = try await client.authState()
             }
         }
+        isCheckingSession = false
     }
 
     func sendCode(phone: String) async {
@@ -132,6 +140,10 @@ final class SessionStore: ObservableObject {
             if telegramSyncMode {
                 let state = try await client.telegramVerifyCode(phone: phone, code: code, password: password?.isEmpty == true ? nil : password)
                 authState = AuthState(authorized: state.authorized, phone: state.phone, userDisplayName: state.userDisplayName)
+                UserDefaults.standard.set(state.authorized, forKey: "telegramExpectedAuthorized")
+                if state.authorized {
+                    await registerTelegramPushToken()
+                }
             } else {
                 authState = try await client.completeLogin(phone: phone, code: code, password: password?.isEmpty == true ? nil : password)
             }
@@ -141,10 +153,10 @@ final class SessionStore: ObservableObject {
     func refreshDialogs() async {
         if demoMode {
             dialogs = demoDialogs()
-            markConnected("Демо-режим")
+            markConnected("Демо")
             return
         }
-        await run {
+        await run(showLoading: dialogs.isEmpty) {
             if telegramSyncMode {
                 dialogs = try await client.telegramDialogs()
             } else {
@@ -157,10 +169,10 @@ final class SessionStore: ObservableObject {
         selectedDialog = dialog
         if demoMode {
             messages = demoMessages[dialog.id] ?? []
-            markConnected("Демо-режим")
+            markConnected("Демо")
             return
         }
-        await run {
+        await run(showLoading: false) {
             if telegramSyncMode {
                 messages = try await client.telegramMessages(chatId: dialog.id)
             } else {
@@ -172,13 +184,7 @@ final class SessionStore: ObservableObject {
     func sendMessage(_ text: String) async {
         guard let dialog = selectedDialog else { return }
         if demoMode {
-            let sent = MessageItem(id: nextDemoMessageId, senderName: nil, text: text, date: Date(), outgoing: true)
-            nextDemoMessageId += 1
-            demoMessages[dialog.id, default: []].append(sent)
-            messages = demoMessages[dialog.id] ?? []
-            dialogs = demoDialogs()
-            selectedDialog = dialogs.first { $0.id == dialog.id } ?? dialog
-            markConnected("Демо-режим")
+            appendDemoMessage(MessageItem(id: nextDemoMessageId, senderName: nil, text: text, date: Date(), outgoing: true))
             return
         }
         await run {
@@ -197,19 +203,53 @@ final class SessionStore: ObservableObject {
         }
     }
 
+    func sendAttachment(fileURL: URL, caption: String?) async {
+        guard let dialog = selectedDialog else { return }
+        if demoMode {
+            appendDemoMessage(MessageItem(id: nextDemoMessageId, senderName: nil, text: caption ?? fileURL.lastPathComponent, date: Date(), outgoing: true, kind: fileURL.demoKind, mediaUrl: fileURL.absoluteString, fileName: fileURL.lastPathComponent, mimeType: fileURL.mimeType))
+            return
+        }
+        await run {
+            let sent = try await client.telegramSendFile(chatId: dialog.id, fileURL: fileURL, caption: caption)
+            messages.append(sent)
+            dialogs = try await client.telegramDialogs()
+        }
+    }
+
+    private func appendDemoMessage(_ message: MessageItem) {
+        guard let dialog = selectedDialog else { return }
+        demoMessages[dialog.id, default: []].append(message)
+        nextDemoMessageId += 1
+        messages = demoMessages[dialog.id] ?? []
+        dialogs = demoDialogs()
+        selectedDialog = dialogs.first { $0.id == dialog.id } ?? dialog
+        markConnected("Демо")
+    }
+
     private func resetClient() {
         client = APIClient(baseURL: URL(string: backendURLString) ?? URL(string: "http://127.0.0.1:8000")!)
     }
 
-    private func run(_ operation: () async throws -> Void) async {
-        isLoading = true
+    private func resetSessionUI() {
+        dialogs = []
+        selectedDialog = nil
+        messages = []
+        authState = AuthState(authorized: false, phone: nil, userDisplayName: nil)
+        connectionStatus = "Не подключено"
+    }
+
+    private func run(showLoading: Bool = true, _ operation: () async throws -> Void) async {
+        if showLoading { isLoading = true }
         lastError = nil
         do {
             try await operation()
-            markConnected(demoMode ? "Демо-режим" : (telegramSyncMode ? "Telegram подключен" : "Сервер подключен"))
+            markConnected(demoMode ? "Демо" : (telegramSyncMode ? "Telegram" : "Сервер"))
         } catch {
-            lastError = error.localizedDescription
-            connectionStatus = "Нет подключения"
+            let message = error.localizedDescription
+            if !message.localizedCaseInsensitiveContains("cancelled") && !message.localizedCaseInsensitiveContains("canceled") {
+                lastError = message
+            }
+            connectionStatus = "Нет сети"
         }
         isLoading = false
     }
@@ -219,9 +259,14 @@ final class SessionStore: ObservableObject {
         lastSyncedAt = Date()
     }
 
+    private func registerTelegramPushToken() async {
+        guard telegramSyncMode, let token = UserDefaults.standard.string(forKey: "apnsDeviceToken") else { return }
+        try? await client.telegramRegisterPushToken(token)
+    }
+
     private func enterDemoMode() {
         authState = AuthState(authorized: true, phone: nil, userDisplayName: profileName)
-        markConnected("Демо-режим")
+        markConnected("Демо")
         dialogs = demoDialogs()
         if selectedDialog == nil {
             selectedDialog = dialogs.first
@@ -274,5 +319,31 @@ private extension Date {
         formatter.dateStyle = .none
         formatter.timeStyle = .short
         return formatter.string(from: self)
+    }
+}
+
+private extension URL {
+    var demoKind: MessageKind {
+        if mimeType.hasPrefix("image/") { return .photo }
+        if mimeType.hasPrefix("video/") { return .video }
+        if mimeType.hasPrefix("audio/") { return .audio }
+        return .file
+    }
+
+    var mimeType: String {
+        let ext = pathExtension.lowercased()
+        switch ext {
+        case "jpg", "jpeg": return "image/jpeg"
+        case "png": return "image/png"
+        case "gif": return "image/gif"
+        case "webp": return "image/webp"
+        case "mp4", "m4v": return "video/mp4"
+        case "mov": return "video/quicktime"
+        case "mp3": return "audio/mpeg"
+        case "m4a": return "audio/mp4"
+        case "ogg": return "audio/ogg"
+        case "pdf": return "application/pdf"
+        default: return "application/octet-stream"
+        }
     }
 }
